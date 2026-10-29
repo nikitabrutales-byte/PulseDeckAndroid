@@ -117,8 +117,7 @@ async function main() {
   await evaluate(`document.getElementById('playA').click()`);
   await waitFor(`PulseDeckDiagnostics.state.playing.A === true`, 3000, 'Deck A playback');
   await waitFor(`typeof ctx !== 'undefined' && ctx && ctx.state === 'running'`, 3000, 'Web Audio context');
-  await evaluate(`document.getElementById('lowA').value='6';document.getElementById('lowA').dispatchEvent(new Event('input',{bubbles:true}))`);
-  await wait(100);
+  await evaluate(`document.getElementById('lowA').value='-6';document.getElementById('lowA').dispatchEvent(new Event('input',{bubbles:true}))`);
   const eqGain = await evaluate(`decks.A.nodes.low.gain.value`);
   assert(Math.abs(eqGain - 6) < 0.1, `Low EQ did not apply: ${eqGain} dB`);
 
