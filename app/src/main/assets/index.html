@@ -73,8 +73,8 @@ html,body{width:100%;height:100%;min-height:0;overflow:hidden}
 .mixer-channel .deckhead{margin-bottom:4px}
 .mixer-channel .controls{grid-template-columns:1fr 1fr;gap:4px}
 .mixer-channel .eq{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
-.screen-nav{gap:4px;padding:2px;border-radius:9px}
-.screen-tab{min-height:22px;padding:2px 8px;font-size:12px;line-height:1.15}
+.screen-nav{gap:6px;padding:3px;border-radius:9px}
+.screen-tab{min-height:36px;padding:5px 10px}
 @media (orientation:landscape) and (max-height:560px){
  .app{padding:4px;gap:4px}
  .screen{gap:4px}
@@ -242,8 +242,17 @@ html,body{width:100%;height:100%;min-height:0;overflow:hidden}
 @media(max-height:520px) and (orientation:landscape){.mixer-play-corner{width:38px;height:38px;min-width:38px;font-size:18px!important}}
 
 
-/* PulseDeck update: remove the Gain/volume strip from the Decks screen only; keep audio controls wired in the DOM. */
-#deckScreen .deck > .controls{display:none!important}
+/* Compact deck information strip; keep the existing top DESKY/MIXER tabs unchanged. */
+#deckScreen .deckhead{display:none!important}
+#deckScreen .track-name{display:flex;align-items:center;gap:8px;min-height:18px;height:18px;padding:0 3px;margin:0 0 5px;border:0;background:transparent;border-radius:0;overflow:hidden}
+#deckScreen .track-caption{display:none!important}
+#deckScreen .filename{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;line-height:18px}
+#deckScreen .deck-mini-letter{display:inline-grid;place-items:center;flex:0 0 22px;width:22px;height:18px;border-radius:5px;font-size:13px;font-weight:900;line-height:18px;background:#244a65;color:#8bd2ff}
+#deckScreen .deck.b .deck-mini-letter{background:#5b3b27;color:#ffc18b}
+#deckScreen .sync-button{height:18px;min-height:18px;padding:0 8px;border-radius:5px;font-size:10px;line-height:16px;white-space:nowrap;background:#17344a;border-color:#3d7698;color:#d9efff}
+#deckScreen .deck.b .sync-button{background:#452d20;border-color:#8d5c35;color:#ffe0c3}
+#deckScreen .deck .controls{display:none!important}
+
 </style>
 </head>
 <body>
@@ -257,7 +266,7 @@ html,body{width:100%;height:100%;min-height:0;overflow:hidden}
 <section class="decks">
   <article class="deck a" id="deckA">
    <div class="deckhead"><div class="deckname"><span class="letter">A</span></div><div class="bpm"><strong id="bpmA">—</strong><span id="bpmTagA">NAČTI SKLADBU</span></div></div>
-   <div class="track-name" aria-label="Načtená skladba"><span class="track-caption">TRACK</span><span class="filename" id="nameA">Žádná skladba</span></div><input id="fileA" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" hidden>
+   <div class="track-name" aria-label="Informace o desce A"><span class="deck-mini-letter">A</span><span class="filename" id="nameA">Žádná skladba</span><button type="button" class="sync-button" id="syncButtonA" aria-label="Synchronizovat desku A">SYNC A</button></div><input id="fileA" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" hidden>
    <div class="wavebox"><canvas class="wave" id="waveA"></canvas><div class="playhead" id="headA"></div><div class="beat-arrows" aria-label="Posun o 16 úderů"><button type="button" class="beat-arrow" id="back16A" aria-label="O 16 úderů zpět" title="O 16 úderů zpět">‹</button><button type="button" class="beat-arrow" id="forward16A" aria-label="O 16 úderů vpřed" title="O 16 úderů vpřed">›</button></div></div><div class="wavefoot"><span id="elapsedA">00:00</span><span id="lengthA">00:00</span></div>
    <div class="transport"><button class="play" id="playA">▶ PLAY</button><button id="cueA">↺ CUE</button><button id="stopA">■ STOP</button><button class="load plus-load" id="loadA" type="button" aria-label="Načíst skladbu A" title="Načíst skladbu">＋</button></div><div class="syncstate" id="syncStateA">Čeká na skladbu</div>
    <div class="controls"><div class="control"><div class="controltitle"><span>GAIN</span><output id="gainValA">0 dB</output></div><input id="gainA" type="range" min="-12" max="6" step="0.5" value="-3"></div><div class="control"><div class="controltitle"><span>HLASITOST</span><output id="volValA">80%</output></div><input id="volA" type="range" min="0" max="85" value="70"></div></div>
@@ -265,7 +274,7 @@ html,body{width:100%;height:100%;min-height:0;overflow:hidden}
   </article>
   <article class="deck b" id="deckB">
    <div class="deckhead"><div class="deckname"><span class="letter">B</span></div><div class="bpm"><strong id="bpmB">—</strong><span id="bpmTagB">NAČTI SKLADBU</span></div></div>
-   <div class="track-name" aria-label="Načtená skladba"><span class="track-caption">TRACK</span><span class="filename" id="nameB">Žádná skladba</span></div><input id="fileB" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" hidden>
+   <div class="track-name" aria-label="Informace o desce B"><span class="deck-mini-letter">B</span><span class="filename" id="nameB">Žádná skladba</span><button type="button" class="sync-button" id="syncButtonB" aria-label="Synchronizovat desku B">SYNC B</button></div><input id="fileB" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" hidden>
    <div class="wavebox"><canvas class="wave" id="waveB"></canvas><div class="playhead" id="headB"></div><div class="beat-arrows" aria-label="Posun o 16 úderů"><button type="button" class="beat-arrow" id="back16B" aria-label="O 16 úderů zpět" title="O 16 úderů zpět">‹</button><button type="button" class="beat-arrow" id="forward16B" aria-label="O 16 úderů vpřed" title="O 16 úderů vpřed">›</button></div></div><div class="wavefoot"><span id="elapsedB">00:00</span><span id="lengthB">00:00</span></div>
    <div class="transport"><button class="play" id="playB">▶ PLAY</button><button id="cueB">↺ CUE</button><button id="stopB">■ STOP</button><button class="load plus-load" id="loadB" type="button" aria-label="Načíst skladbu B" title="Načíst skladbu">＋</button></div><div class="syncstate" id="syncStateB">Čeká na skladbu</div>
    <div class="controls"><div class="control"><div class="controltitle"><span>GAIN</span><output id="gainValB">0 dB</output></div><input id="gainB" type="range" min="-12" max="6" step="0.5" value="-3"></div><div class="control"><div class="controltitle"><span>HLASITOST</span><output id="volValB">80%</output></div><input id="volB" type="range" min="0" max="85" value="70"></div></div>
@@ -401,6 +410,19 @@ function jumpBeats(id,direction){
   }).catch(err=>{console.error(err);msg('Posun skladby se nepodařil.');});
  }else{d.pos=pos;d.lastCtxTime=ctx?ctx.currentTime:0;paintDeck(d)}
 }
+async function syncDeckNow(id){
+ const d=decks[id],other=decks[id==='A'?'B':'A'];
+ if(!d.buffer||!d.bpm){msg('Nejdřív načti skladbu a počkej na analýzu rytmu v desce '+id+'.');return}
+ if(!other.buffer||!other.bpm){setMaster(d,false);setRate(d,target()/d.bpm);$('syncState'+id).textContent='TEMPO NASTAVENO · ČEKÁ NA DRUHOU DESKU';$('syncState'+id).classList.add('ok');msg('Tempo desky '+id+' nastaveno. Pro srovnání úderů načti i druhou desku.');return}
+ masterBpm=other.playing?target():(other.bpm||target());
+ $('targetBpm').value=masterBpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1);
+ const rate=masterBpm/d.bpm;if(rate<.25||rate>3){msg('Tempo je mimo podporovaný rozsah 0,25× až 3×.');return}
+ setRate(d,rate);
+ if(ctx&&other.playing){const phase=beatPhase(other,ctx.currentTime);d.pos=nextAlignedPosition(d,phase,.10);d.lastCtxTime=ctx.currentTime;paintDeck(d)}
+ $('syncState'+id).textContent='MANUÁLNÍ BEATSYNC · '+masterBpm.toFixed(1)+' BPM';$('syncState'+id).classList.add('ok');setMaster(other.playing?other:d,false);msg('Deska '+id+' synchronizována.');
+}
+$('syncButtonA').addEventListener('click',()=>syncDeckNow('A'));
+$('syncButtonB').addEventListener('click',()=>syncDeckNow('B'));
 for(const id of ['A','B']){
  $('back16'+id).addEventListener('click',()=>jumpBeats(id,-1));
  $('forward16'+id).addEventListener('click',()=>jumpBeats(id,1));
