@@ -120,7 +120,7 @@ async function main() {
   await evaluate(`document.getElementById('lowA').value='-6';document.getElementById('lowA').dispatchEvent(new Event('input',{bubbles:true}))`);
   const eqGain = await evaluate(`decks.A.nodes.low.gain.value`);
   assert(Math.abs(eqGain - 6) < 0.1, `Low EQ did not apply: ${eqGain} dB`);
-
+  assert(Math.abs(eqGain - (-6)) < 0.1, `Low EQ did not apply: ${eqGain} dB`);
   const domAfter = await cdp('DOM.getDocument');
   const fileNodeB = await cdp('DOM.querySelector', { nodeId: domAfter.root.nodeId, selector: '#fileB' });
   await cdp('DOM.setFileInputFiles', { files: [wavPath], nodeId: fileNodeB.nodeId });
