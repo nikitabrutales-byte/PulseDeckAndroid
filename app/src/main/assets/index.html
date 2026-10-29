@@ -413,13 +413,24 @@ function jumpBeats(id,direction){
 async function syncDeckNow(id){
  const d=decks[id],other=decks[id==='A'?'B':'A'];
  if(!d.buffer||!d.bpm){msg('Nejdřív načti skladbu a počkej na analýzu rytmu v desce '+id+'.');return}
- if(!other.buffer||!other.bpm){setMaster(d,false);setRate(d,target()/d.bpm);$('syncState'+id).textContent='TEMPO NASTAVENO · ČEKÁ NA DRUHOU DESKU';$('syncState'+id).classList.add('ok');msg('Tempo desky '+id+' nastaveno. Pro srovnání úderů načti i druhou desku.');return}
+ try{await ensureEngine()}catch(err){console.error(err);msg('Zvukové jádro se nepodařilo spustit.');return}
+ if(!d.nodes)buildNodes(d);
+ if(!other.buffer||!other.bpm){
+  masterBpm=target();$('masterBpmBig').textContent=masterBpm.toFixed(1);
+  const rate=masterBpm/d.bpm;if(rate<.25||rate>3){msg('Tempo je mimo podporovaný rozsah 0,25× až 3×.');return}
+  setRate(d,rate);setMaster(d,false);
+  if(!d.playing){const when=ctx.currentTime+.02;const offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos;if(!startSource(d,when,offset,rate)){msg('Nepodařilo se spustit desku '+id+'.');return}}
+  $('syncState'+id).textContent='TEMPO NASTAVENO · ČEKÁ NA DRUHOU DESKU';$('syncState'+id).classList.add('ok');msg('Deska '+id+' spuštěna. Pro srovnání úderů načti i druhou desku.');return
+ }
  masterBpm=other.playing?target():(other.bpm||target());
  $('targetBpm').value=masterBpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1);
  const rate=masterBpm/d.bpm;if(rate<.25||rate>3){msg('Tempo je mimo podporovaný rozsah 0,25× až 3×.');return}
- setRate(d,rate);
- if(ctx&&other.playing){const phase=beatPhase(other,ctx.currentTime);d.pos=nextAlignedPosition(d,phase,.10);d.lastCtxTime=ctx.currentTime;paintDeck(d)}
- $('syncState'+id).textContent='MANUÁLNÍ BEATSYNC · '+masterBpm.toFixed(1)+' BPM';$('syncState'+id).classList.add('ok');setMaster(other.playing?other:d,false);msg('Deska '+id+' synchronizována.');
+ const when=ctx.currentTime+.025;
+ let offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos;
+ if(other.playing){const phase=beatPhase(other,when);offset=nextAlignedPosition(d,phase,.10)}
+ if(d.playing){updatePosition(d);stopSource(d);d.playing=false}
+ if(!startSource(d,when,offset,rate)){msg('Nepodařilo se spustit desku '+id+'.');return}
+ $('syncState'+id).textContent='MANUÁLNÍ BEATSYNC · '+masterBpm.toFixed(1)+' BPM';$('syncState'+id).classList.add('ok');setMaster(other.playing?other:d,false);msg('Deska '+id+' synchronizována a přehrává.');
 }
 $('syncButtonA').addEventListener('click',()=>syncDeckNow('A'));
 $('syncButtonB').addEventListener('click',()=>syncDeckNow('B'));
