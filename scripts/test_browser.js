@@ -98,7 +98,7 @@ async function main() {
     const entry = pending.get(msg.id); pending.delete(msg.id);
     if (msg.error) entry.reject(new Error(msg.error.message)); else entry.resolve(msg.result);
   };
-  await evaluate(`document.open();document.write(${JSON.stringify(html)});document.close();true`);
+  await evaluate(`document.getElementById('lowA').value='-6';document.getElementById('lowA').dispatchEvent(new Event('input',{bubbles:true}))`);
   await waitFor(`document.readyState === 'complete' && !!window.PulseDeckDiagnostics`, 5000, 'app initialization');
   const initial = JSON.parse(await evaluate(`JSON.stringify({decks:!!document.getElementById('playA')&&!!document.getElementById('playB'),tabs:document.querySelectorAll('.screen-tab').length,transportColumns:getComputedStyle(document.querySelector('#deckA .transport')).gridTemplateColumns})`));
   assert(initial.decks, 'Both decks did not render');
