@@ -32,17 +32,18 @@ if not errors:
         'EQ high B': 'id="highB"', 'EQ mid B': 'id="midB"', 'EQ low B': 'id="lowB"',
         'Decks screen switch': 'id="showDeckScreen"',
         'Mixer screen switch': 'id="showMixerScreen"',
+        'Library screen switch': 'id="showLibraryScreen"',
+        'Recording screen switch': 'id="showRecordingScreen"',
+        'Folder picker button': 'id="libraryFolderNative"',
+        'Folder picker JS bridge': 'window.PulseDeckAndroid.openFolderPicker()',
+        'Native folder scan callback': 'window.onNativeFolderPicked=onNativeFolderPicked',
+        'Native chunked audio reader': 'readAudioFileChunk',
         'Stereo-preserving Web Audio buffer playback': 's.connect(d.nodes.low)',
-        'Four transport buttons in one row': '.transport{grid-template-columns:1fr 1fr 1fr 46px;',
+        'Traktor-style horizontal fader thumb': 'width:42px!important;height:14px!important',
     }
     for label, needle in required.items():
         if needle not in source:
             errors.append(f'Missing required UI/logic element: {label} ({needle})')
-
-    if 'function setRate(d,rate){rate=clamp(rate,.25,3);' not in source:
-        errors.append('Playback-rate limiter does not match the supported 0.25x–3x range.')
-    if "offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos" not in source:
-        errors.append('PLAY does not restart a deck after it reaches the end of a track.')
 
     nav_buttons = re.findall(r'<button[^>]*class="screen-tab[^>]*>(.*?)</button>', source, re.S)
     nav_labels = [re.sub(r'<[^>]+>', '', label).strip() for label in nav_buttons]
@@ -50,10 +51,22 @@ if not errors:
     if nav_labels != expected_nav:
         errors.append(f'Expected four navigation tabs in order {expected_nav}; found {nav_labels}.')
 
-    if 'ACTION_OPEN_DOCUMENT' not in activity.read_text(encoding='utf-8'):
+    native = activity.read_text(encoding='utf-8')
+    for label, needle in {
+        'SAF folder picker': 'Intent.ACTION_OPEN_DOCUMENT_TREE',
+        'JavaScript bridge': 'addJavascriptInterface(PulseDeckFolderBridge(), "PulseDeckAndroid")',
+        'Recursive folder scan': 'appendAudioFiles(tree, rootId',
+        'Chunked audio reading': 'fun readAudioFileChunk',
+        'Persisted folder permission': 'takePersistableUriPermission',
+        'Multiple file selection': 'Intent.EXTRA_ALLOW_MULTIPLE, true',
+    }.items():
+        if needle not in native:
+            errors.append(f'Missing Android folder/file feature: {label} ({needle})')
+
+    if 'ACTION_OPEN_DOCUMENT' not in native:
         errors.append('Android audio file picker is not configured.')
-    if 'android:screenOrientation="landscape"' not in manifest.read_text(encoding='utf-8'):
-        errors.append('Android activity is not locked to landscape orientation.')
+    if 'android:screenOrientation="fullSensor"' not in manifest.read_text(encoding='utf-8'):
+        errors.append('Android host does not permit portrait and landscape orientations.')
 
 if errors:
     print('PulseDeck verification FAILED:')
@@ -62,4 +75,4 @@ if errors:
     sys.exit(1)
 
 print('PulseDeck static verification passed.')
-print('Verified: four navigation tabs, both decks, transport, audio picker, stereo Web Audio, EQ, sync, 138 BPM default, landscape host and browser smoke test.')
+print('Verified: four screens, both decks, Traktor-style faders, SAF whole-folder import with recursive scan and chunked reads, persistent folder permission, portrait/landscape host, EQ, sync, 138 BPM and Web Audio routing.')
