@@ -276,6 +276,34 @@ html,body{width:100%;height:100%;min-height:0;overflow:hidden}
 
 .recording-panel{max-width:900px}.record-tempo{display:grid;grid-template-columns:1fr minmax(250px,1fr);gap:14px;align-items:center;margin:20px 0;padding:16px;background:#0d1722;border:1px solid #2b4054;border-radius:11px}.record-tempo-control{display:flex;align-items:center;gap:7px}.record-tempo-control button{min-width:38px;font-size:20px;padding:7px}.record-tempo-control input{width:110px;min-width:0;background:#0e1721;border:1px solid #3a536a;border-radius:8px;color:#e2edf7;font-size:23px;font-weight:900;padding:8px;text-align:center}.record-tempo-control span{color:#8ea4b8;font-size:11px;font-weight:900}.record-auto{grid-column:1/-1;color:#9bb0c3;font-size:11px;display:flex;align-items:center;gap:8px}.record-auto input{accent-color:#72c8a8}.record-actions{display:flex;gap:9px;flex-wrap:wrap;margin:15px 0}.record-actions button:disabled{opacity:.4}@media(max-width:650px){.record-tempo{grid-template-columns:1fr}.record-auto{grid-column:auto}.record-tempo-control input{flex:1}}
 
+
+/* Portrait mode: all four screens remain fully usable on a phone held upright. */
+@media (orientation:portrait) {
+  html,body {height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
+  .app {height:auto;min-height:100dvh;max-height:none;overflow:visible;grid-template-rows:auto 1fr;padding:7px;gap:8px}
+  .screen-nav {position:sticky;top:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;padding:4px}
+  .screen-tab {min-height:38px;padding:5px 2px;font-size:clamp(8px,2.4vw,11px);letter-spacing:0;white-space:normal;line-height:1.15}
+  .screen {height:auto;min-height:calc(100dvh - 60px);overflow:visible;gap:9px}
+  #deckScreen {grid-template-rows:auto}
+  .decks {height:auto;min-height:0;grid-template-columns:minmax(0,1fr);gap:9px}
+  .deck {height:auto;min-height:390px;overflow:visible;padding:10px}
+  #deckScreen .wavebox {height:clamp(105px,19vh,190px)!important;min-height:105px!important;flex:1 1 140px!important}
+  .deck .transport {margin:8px 0}
+  #mixerScreen {overflow:visible}
+  #mixerScreen .mixer-channels {height:auto;min-height:0;grid-template-columns:minmax(0,1fr)!important;gap:9px}
+  #mixerScreen .mixer-channel {height:auto;min-height:330px!important;padding:8px!important}
+  #mixerScreen .mixer-eq-slot {min-height:270px;flex:1 1 auto}
+  #mixerScreen .eq {height:auto;min-height:260px;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px!important}
+  #mixerScreen .eq .control {min-height:260px;height:auto;padding:5px!important}
+  #mixerScreen .eq input {height:clamp(190px,28vh,280px)!important;width:clamp(42px,8vw,58px)!important;max-height:none}
+  .library-panel {max-height:none;height:auto;overflow:visible;margin-bottom:10px}
+  .library-table-head,.library-row {grid-template-columns:minmax(90px,1fr) 42px 42px 58px 142px;gap:4px}
+  .library-row-actions {flex-wrap:nowrap}
+  .recording-panel {max-width:none}
+  .record-tempo {grid-template-columns:minmax(0,1fr);gap:10px}
+  .record-auto {grid-column:auto}
+}
+
 </style>
 <meta name="pulseDeck-fader-style" content="Traktor-inspired horizontal metal fader caps, top view"><!-- PulseDeck beta: Traktor-style horizontal fader caps -->
 </head>
@@ -326,7 +354,7 @@ html,body{width:100%;height:100%;min-height:0;overflow:hidden}
  <section class="screen" id="libraryScreen" aria-label="Knihovna skladeb" hidden>
   <div class="library-panel">
    <div class="library-head"><div><div class="library-kicker">PULSEDECK · LOCAL LIBRARY</div><h2>KNIHOVNA SKLADEB</h2><p>Analýza BPM a prvního úderu se uloží do místní databáze tohoto zařízení.</p></div><div class="library-count" id="libraryCount">0 TRACKŮ</div></div>
-   <div class="library-actions"><label class="library-btn">＋ PŘIDAT SKLADBY<input id="libraryFiles" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" multiple hidden></label><label class="library-btn secondary">＋ NAČÍST SLOŽKU<input id="libraryFolder" type="file" accept="audio/*" webkitdirectory multiple hidden></label><button class="library-btn secondary" id="reanalyzeAll">ANALYZOVAT VŠE</button></div>
+   <div class="library-actions"><label class="library-btn">＋ PŘIDAT SKLADBY<input id="libraryFiles" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" multiple hidden></label><button type="button" class="library-btn secondary" id="libraryFolderNative">＋ NAČÍST CELOU SLOŽKU</button><label class="library-btn secondary" id="libraryFolderFallbackLabel" hidden>＋ VYBRAT SLOŽKU<input id="libraryFolder" type="file" accept="audio/*" webkitdirectory multiple hidden></label><button class="library-btn secondary" id="reanalyzeAll">ANALYZOVAT VŠE</button></div>
    <div class="library-progress"><div id="libraryProgressBar"></div></div><div class="library-status" id="libraryStatus">Databáze připravena. Přidej skladby nebo celou složku.</div>
    <div class="library-table-head"><span>SKLADBA</span><span>DÉLKA</span><span>BPM</span><span>PRVNÍ ÚDER</span><span>AKCE</span></div>
    <div id="libraryList" class="library-list"><div class="library-empty">Knihovna je zatím prázdná.</div></div>
@@ -508,13 +536,71 @@ function libTx(mode='readonly'){return libDb.transaction(LIB_STORE,mode).objectS
 function libAll(){return new Promise((resolve,reject)=>{const r=libTx().getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error)})}
 function libPut(item){return new Promise((resolve,reject)=>{const r=libTx('readwrite').put(item);r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error)})}
 function libDelete(id){return new Promise((resolve,reject)=>{const r=libTx('readwrite').delete(id);r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error)})}
-function libId(f){return [f.name,f.size,f.lastModified||0].join('|')}
+function libId(f){return [f.webkitRelativePath||f.relativePath||f.name,f.size,f.lastModified||0].join('|')}
 function libTime(n){return fmt(n||0)}
 function libSafe(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function renderLibrary(){const items=(await libAll()).sort((a,b)=>a.name.localeCompare(b.name));$('libraryCount').textContent=items.length+' TRACKŮ';$('libraryList').innerHTML=items.length?items.map(x=>`<div class="library-row"><span class="library-track" title="${libSafe(x.name)}">${libSafe(x.name)}</span><span class="library-muted">${libTime(x.duration)}</span><b>${x.bpm?x.bpm.toFixed(1):'—'}</b><span class="library-muted">${x.offset!=null?x.offset.toFixed(3)+' s':'—'}</span><span class="library-row-actions"><button data-load-a="${libSafe(x.id)}">NAČÍST A</button><button data-load-b="${libSafe(x.id)}">NAČÍST B</button><button data-del="${libSafe(x.id)}">×</button></span></div>`).join(''):'<div class="library-empty">Knihovna je zatím prázdná.</div>';document.querySelectorAll('[data-load-a],[data-load-b]').forEach(b=>b.onclick=async()=>{const id=b.dataset.loadA||b.dataset.loadB;const deck=b.dataset.loadA?'A':'B';const x=(await libAll()).find(t=>t.id===id);if(x){switchScreen('decks');await loadDeck(deck,new File([x.blob],x.name,{type:x.type||'audio/mpeg',lastModified:x.lastModified||Date.now()}))}});document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await libDelete(b.dataset.del);renderLibrary()})}
 async function analyzeLibraryFile(file,index,total){const id=libId(file);const existing=(await libAll()).find(x=>x.id===id);if(existing&&existing.bpm){return}const bytes=await file.arrayBuffer();const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*60));const result=await analyzeInWorker({sampleRate:buffer.sampleRate,length:samples.length,numberOfChannels:1,getChannelData:()=>samples});await libPut({id,name:file.name,size:file.size,lastModified:file.lastModified||0,type:file.type||'audio/mpeg',duration:buffer.duration,bpm:result.bpm||0,offset:result.offset||0,blob:new Blob([bytes],{type:file.type||'audio/mpeg'}),analyzedAt:Date.now()});}
 async function processLibraryFiles(files){if(libBusy)return;libBusy=true;const list=Array.from(files||[]).filter(f=>f.type.startsWith('audio/')||/\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(f.name));if(!list.length){$('libraryStatus').textContent='Nebyly vybrány žádné podporované zvukové soubory.';libBusy=false;return}let done=0,errors=0;$('libraryStatus').textContent='Připravuji '+list.length+' skladeb…';for(const f of list){try{await analyzeLibraryFile(f,done,list.length)}catch(e){console.error('Library analysis',f.name,e);errors++}done++;$('libraryProgressBar').style.width=(done/list.length*100)+'%';$('libraryStatus').textContent='Analýza '+done+'/'+list.length+' · '+f.name}await renderLibrary();$('libraryStatus').textContent='Hotovo: '+(done-errors)+' analyzováno nebo načteno z cache'+(errors?', chyby: '+errors:'')+'. Výsledky jsou uložené místně.';libBusy=false}
-$('libraryFiles').addEventListener('change',e=>{processLibraryFiles(e.target.files);e.target.value=''});$('libraryFolder').addEventListener('change',e=>{processLibraryFiles(e.target.files);e.target.value=''});$('reanalyzeAll').addEventListener('click',async()=>{if(libBusy)return;const items=await libAll();if(!items.length){msg('Knihovna je prázdná.');return}libBusy=true;let done=0,errors=0;for(const x of items){try{const f=new File([x.blob],x.name,{type:x.type||'audio/mpeg',lastModified:x.lastModified||Date.now()});await libDelete(x.id);await analyzeLibraryFile(f,done,items.length)}catch(e){console.error(e);errors++}done++;$('libraryProgressBar').style.width=(done/items.length*100)+'%';$('libraryStatus').textContent='Nová analýza '+done+'/'+items.length+' · '+x.name}await renderLibrary();$('libraryStatus').textContent='Nová analýza dokončena.'+(errors?' Chyby: '+errors:'');libBusy=false});
+
+$('libraryFiles').addEventListener('change',e=>{processLibraryFiles(e.target.files);e.target.value=''});
+$('libraryFolder').addEventListener('change',e=>{processLibraryFiles(e.target.files);e.target.value=''});
+$('libraryFolderNative').addEventListener('click',()=>{
+  if(window.PulseDeckAndroid&&typeof window.PulseDeckAndroid.openFolderPicker==='function'){
+    window.PulseDeckAndroid.openFolderPicker();
+  } else {
+    $('libraryFolderFallbackLabel').hidden=false;
+    $('libraryFolder').click();
+  }
+});
+async function onNativeFolderPicked(){
+  if(!window.PulseDeckAndroid)return;
+  if(libBusy)return;
+  libBusy=true;
+  let files=[];
+  try{
+    files=JSON.parse(window.PulseDeckAndroid.listAudioFiles()||'[]');
+  }catch(e){
+    $('libraryStatus').textContent='Složku se nepodařilo načíst: '+e.message;
+    libBusy=false;return;
+  }
+  if(!files.length){
+    $('libraryStatus').textContent='Ve vybrané složce nebyly nalezeny podporované audio soubory.';
+    libBusy=false;return;
+  }
+  let done=0,errors=0;
+  $('libraryStatus').textContent='Načítám '+files.length+' skladeb ze složky…';
+  for(const item of files){
+    try{
+      const chunks=[];
+      const chunkSize=524288;
+      const total=Math.max(0,Number(item.size)||0);
+      let offset=0;
+      while((total>0&&offset<total)||(total===0&&offset===0)||(total===0&&chunks.length&&chunks[chunks.length-1].length===chunkSize)){
+        const requestSize=total>0?Math.min(chunkSize,total-offset):chunkSize;
+        const encoded=window.PulseDeckAndroid.readAudioFileChunk(item.uri,offset,requestSize);
+        if(!encoded){if(total>0)throw new Error('Soubor nelze přečíst: '+item.name);break}
+        const raw=atob(encoded),bytes=new Uint8Array(raw.length);
+        for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+        chunks.push(bytes);
+        offset+=bytes.length;
+        if(total===0&&bytes.length<chunkSize)break;
+        if(offset>2147483648)throw new Error('Soubor je větší než podporovaný limit 2 GB: '+item.name);
+      }
+      const file=new File(chunks,item.name,{type:item.type||'audio/mpeg',lastModified:item.lastModified||Date.now()});
+      file.relativePath=item.relativePath||item.name;
+      await analyzeLibraryFile(file,done,files.length);
+    }catch(e){console.error('Folder import',item.name,e);errors++}
+    done++;
+    $('libraryProgressBar').style.width=(done/files.length*100)+'%';
+    $('libraryStatus').textContent='Načítání složky '+done+'/'+files.length+' · '+item.name;
+  }
+  await renderLibrary();
+  $('libraryStatus').textContent='Složka dokončena: '+(done-errors)+' skladeb přidáno nebo načteno z cache'+(errors?', chyby: '+errors:'')+'. Analýza je uložená místně.';
+  libBusy=false;
+}
+window.onNativeFolderPicked=onNativeFolderPicked;
+$('reanalyzeAll').addEventListener('click',async()=>{if(libBusy)return;const items=await libAll();if(!items.length){msg('Knihovna je prázdná.');return}libBusy=true;let done=0,errors=0;for(const x of items){try{const f=new File([x.blob],x.name,{type:x.type||'audio/mpeg',lastModified:x.lastModified||Date.now()});await libDelete(x.id);await analyzeLibraryFile(f,done,items.length)}catch(e){console.error(e);errors++}done++;$('libraryProgressBar').style.width=(done/items.length*100)+'%';$('libraryStatus').textContent='Nová analýza '+done+'/'+items.length+' · '+x.name}await renderLibrary();$('libraryStatus').textContent='Nová analýza dokončena.'+(errors?' Chyby: '+errors:'');libBusy=false});
 const oldSwitchScreen=switchScreen;switchScreen=function(which){if(which==='library'||which==='recording'){ $('deckScreen').hidden=true;$('mixerScreen').hidden=true;$('libraryScreen').hidden=which!=='library';$('recordingScreen').hidden=which!=='recording';for(const id of ['showDeckScreen','showMixerScreen','showLibraryScreen','showRecordingScreen']){const active=id===(which==='library'?'showLibraryScreen':'showRecordingScreen');$(id).classList.toggle('active',active);$(id).setAttribute('aria-pressed',String(active))}if(which==='library')renderLibrary().catch(console.error);return} $('libraryScreen').hidden=true;$('recordingScreen').hidden=true;oldSwitchScreen(which);for(const id of ['showLibraryScreen','showRecordingScreen']){$(id).classList.remove('active');$(id).setAttribute('aria-pressed','false')}};$('showLibraryScreen').addEventListener('click',()=>switchScreen('library'));$('showRecordingScreen').addEventListener('click',()=>switchScreen('recording'));
 
 function syncVisibleTempo(){const v=Number($('masterTempoControl').value);$('targetBpm').value=v.toFixed(2);commitTarget()}
