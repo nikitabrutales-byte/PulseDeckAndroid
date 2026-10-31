@@ -19,27 +19,17 @@ if not errors:
     if not m:
         errors.append('Inline application JavaScript was not found.')
     else:
-        js = m.group(1)
-        Path('/tmp/pulsedeck-script-check.js').write_text(js, encoding='utf-8')
+        Path('/tmp/pulsedeck-script-check.js').write_text(m.group(1), encoding='utf-8')
 
     required = {
-        'Deck A': 'id="playA"',
-        'Deck B': 'id="playB"',
-        'Cue A': 'id="cueA"',
-        'Cue B': 'id="cueB"',
-        'Stop A': 'id="stopA"',
-        'Stop B': 'id="stopB"',
-        'Load A': 'id="loadA"',
-        'Load B': 'id="loadB"',
-        'Deck A sync': 'id="syncButtonA"',
-        'Deck B sync': 'id="syncButtonB"',
+        'Deck A': 'id="playA"', 'Deck B': 'id="playB"',
+        'Cue A': 'id="cueA"', 'Cue B': 'id="cueB"',
+        'Stop A': 'id="stopA"', 'Stop B': 'id="stopB"',
+        'Load A': 'id="loadA"', 'Load B': 'id="loadB"',
+        'Deck A sync': 'id="syncButtonA"', 'Deck B sync': 'id="syncButtonB"',
         'Default tempo 138 BPM': 'masterBpm=138',
-        'EQ high A': 'id="highA"',
-        'EQ mid A': 'id="midA"',
-        'EQ low A': 'id="lowA"',
-        'EQ high B': 'id="highB"',
-        'EQ mid B': 'id="midB"',
-        'EQ low B': 'id="lowB"',
+        'EQ high A': 'id="highA"', 'EQ mid A': 'id="midA"', 'EQ low A': 'id="lowA"',
+        'EQ high B': 'id="highB"', 'EQ mid B': 'id="midB"', 'EQ low B': 'id="lowB"',
         'Decks screen switch': 'id="showDeckScreen"',
         'Mixer screen switch': 'id="showMixerScreen"',
         'Stereo-preserving Web Audio buffer playback': 's.connect(d.nodes.low)',
@@ -54,9 +44,11 @@ if not errors:
     if "offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos" not in source:
         errors.append('PLAY does not restart a deck after it reaches the end of a track.')
 
-    nav_buttons = re.findall(r'<button[^>]*class="screen-tab[^>]*>', source)
-    if len(nav_buttons) != 2:
-        errors.append(f'Expected exactly two screen-navigation buttons; found {len(nav_buttons)}.')
+    nav_buttons = re.findall(r'<button[^>]*class="screen-tab[^>]*>(.*?)</button>', source, re.S)
+    nav_labels = [re.sub(r'<[^>]+>', '', label).strip() for label in nav_buttons]
+    expected_nav = ['DESKY', 'MIXER', 'KNIHOVNA', 'LOCAL MIX RECORDING']
+    if nav_labels != expected_nav:
+        errors.append(f'Expected four navigation tabs in order {expected_nav}; found {nav_labels}.')
 
     if 'ACTION_OPEN_DOCUMENT' not in activity.read_text(encoding='utf-8'):
         errors.append('Android audio file picker is not configured.')
@@ -70,4 +62,4 @@ if errors:
     sys.exit(1)
 
 print('PulseDeck static verification passed.')
-print('Verified: both decks, four-button transport row, audio picker, stereo-capable Web Audio graph, EQ, sync, 138 BPM default, landscape Android host and browser smoke test.')
+print('Verified: four navigation tabs, both decks, transport, audio picker, stereo Web Audio, EQ, sync, 138 BPM default, landscape host and browser smoke test.')
