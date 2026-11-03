@@ -354,6 +354,42 @@ html,body{background:#101010!important;color:#eeeeee}
 .library-progress>div{background:linear-gradient(90deg,#9e4b32,#d8873b)!important}
 .recording-panel,.record-tempo{background:#181818!important;border-color:#51463f!important}
 
+
+/* FIX: force real vertical EQ sliders in Android WebView and Chromium. */
+#mixerScreen .mixer-eq-slot .eq{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:stretch!important}
+#mixerScreen .mixer-eq-slot .eq .control{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:space-between!important;min-height:0!important;position:relative!important}
+#mixerScreen .mixer-eq-slot .eq input[type=range]{
+  -webkit-appearance:slider-vertical!important;
+  appearance:slider-vertical!important;
+  writing-mode:vertical-lr!important;
+  direction:rtl!important;
+  orient:vertical;
+  width:42px!important;
+  min-width:42px!important;
+  max-width:64px!important;
+  height:clamp(210px,62vh,620px)!important;
+  min-height:180px!important;
+  flex:1 1 auto!important;
+  margin:8px auto!important;
+  padding:0!important;
+  touch-action:pan-y!important;
+  accent-color:#a55b42!important;
+}
+#mixerScreen .mixer-eq-slot .eq input[type=range]::-webkit-slider-runnable-track{
+  width:8px!important;height:100%!important;border-radius:6px!important;
+  background:linear-gradient(90deg,#080808 0%,#393532 28%,#171615 50%,#393532 72%,#080808 100%)!important;
+  border:1px solid #5b514b!important;
+}
+#mixerScreen .mixer-eq-slot .eq input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none!important;appearance:none!important;
+  width:42px!important;height:14px!important;border:1px solid #e0c5b5!important;border-radius:3px!important;
+  background:linear-gradient(180deg,#e6ddd7 0%,#aaa09a 22%,#5d514b 48%,#292321 55%,#a55b42 82%,#e4c8b7 100%)!important;
+  box-shadow:0 2px 5px #000b,inset 0 1px 1px #fff8!important;
+}
+@media(orientation:portrait){
+ #mixerScreen .mixer-eq-slot .eq input[type=range]{height:clamp(220px,34vh,360px)!important}
+}
+
 </style>
 <meta name="pulseDeck-fader-style" content="Traktor-inspired horizontal metal fader caps, top view"><!-- PulseDeck beta: Traktor-style horizontal fader caps -->
 </head>
@@ -374,7 +410,7 @@ html,body{background:#101010!important;color:#eeeeee}
    <div class="wavebox"><canvas class="wave" id="waveA"></canvas><div class="playhead" id="headA"></div><div class="beat-arrows" aria-label="Posun o 16 úderů"><button type="button" class="beat-arrow" id="back16A" aria-label="O 16 úderů zpět" title="O 16 úderů zpět">‹</button><button type="button" class="beat-arrow" id="forward16A" aria-label="O 16 úderů vpřed" title="O 16 úderů vpřed">›</button></div></div><div class="wavefoot"><span id="elapsedA">00:00</span><span id="lengthA">00:00</span></div>
    <div class="transport"><button class="play" id="playA">▶ PLAY</button><button id="cueA">↺ CUE</button><button id="stopA">■ STOP</button><button class="load plus-load" id="loadA" type="button" aria-label="Načíst skladbu A" title="Načíst skladbu">＋</button></div><div class="syncstate" id="syncStateA">Čeká na skladbu</div>
    <div class="controls"><div class="control"><div class="controltitle"><span>GAIN</span><output id="gainValA">0 dB</output></div><input id="gainA" type="range" min="-12" max="6" step="0.5" value="-3"></div><div class="control"><div class="controltitle"><span>HLASITOST</span><output id="volValA">80%</output></div><input id="volA" type="range" min="0" max="100" value="70"></div></div>
-   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input id="highA" type="range" min="-12" max="12" step="0.5" value="0"><output id="highValA">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input id="midA" type="range" min="-12" max="12" step="0.5" value="0"><output id="midValA">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input id="lowA" type="range" min="-12" max="12" step="0.5" value="0"><output id="lowValA">0 dB</output></div></div>
+   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input orient="vertical" id="highA" type="range" min="-24" max="6" step="0.5" value="0"><output id="highValA">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input orient="vertical" id="midA" type="range" min="-24" max="6" step="0.5" value="0"><output id="midValA">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input orient="vertical" id="lowA" type="range" min="-24" max="6" step="0.5" value="0"><output id="lowValA">0 dB</output></div></div>
   </article>
   <article class="deck b" id="deckB">
    <div class="deckhead"><div class="deckname"><span class="letter">B</span></div><div class="bpm"><strong id="bpmB">—</strong><span id="bpmTagB">NAČTI SKLADBU</span></div></div>
@@ -382,7 +418,7 @@ html,body{background:#101010!important;color:#eeeeee}
    <div class="wavebox"><canvas class="wave" id="waveB"></canvas><div class="playhead" id="headB"></div><div class="beat-arrows" aria-label="Posun o 16 úderů"><button type="button" class="beat-arrow" id="back16B" aria-label="O 16 úderů zpět" title="O 16 úderů zpět">‹</button><button type="button" class="beat-arrow" id="forward16B" aria-label="O 16 úderů vpřed" title="O 16 úderů vpřed">›</button></div></div><div class="wavefoot"><span id="elapsedB">00:00</span><span id="lengthB">00:00</span></div>
    <div class="transport"><button class="play" id="playB">▶ PLAY</button><button id="cueB">↺ CUE</button><button id="stopB">■ STOP</button><button class="load plus-load" id="loadB" type="button" aria-label="Načíst skladbu B" title="Načíst skladbu">＋</button></div><div class="syncstate" id="syncStateB">Čeká na skladbu</div>
    <div class="controls"><div class="control"><div class="controltitle"><span>GAIN</span><output id="gainValB">0 dB</output></div><input id="gainB" type="range" min="-12" max="6" step="0.5" value="-3"></div><div class="control"><div class="controltitle"><span>HLASITOST</span><output id="volValB">80%</output></div><input id="volB" type="range" min="0" max="100" value="70"></div></div>
-   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input id="highB" type="range" min="-12" max="12" step="0.5" value="0"><output id="highValB">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input id="midB" type="range" min="-12" max="12" step="0.5" value="0"><output id="midValB">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input id="lowB" type="range" min="-12" max="12" step="0.5" value="0"><output id="lowValB">0 dB</output></div></div>
+   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input orient="vertical" id="highB" type="range" min="-24" max="6" step="0.5" value="0"><output id="highValB">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input orient="vertical" id="midB" type="range" min="-24" max="6" step="0.5" value="0"><output id="midValB">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input orient="vertical" id="lowB" type="range" min="-24" max="6" step="0.5" value="0"><output id="lowValB">0 dB</output></div></div>
   </article>
  </section>
 </section><!-- /deckScreen -->
@@ -462,19 +498,24 @@ function smoothVolumeCurve(raw){
 function applyDeck(d){
  if(!d.nodes||!ctx)return;
  const now=ctx.currentTime;
+ let allEqAtMinimum=true;
  for(const f of ['low','mid','high']){
   const val=Number($(`${f}${d.id}`).value);
+  if(val>-23.999)allEqAtMinimum=false;
   const param=d.nodes[f].gain;
   param.cancelScheduledValues(now);
   param.setTargetAtTime(val,now,.008);
   $(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB';
  }
  const g=+$(`gain${d.id}`).value;
- const vol=smoothVolumeCurve($(`vol${d.id}`).value);
- const targetGain=Math.pow(10,g/20)*vol*0.501187;
+ const rawVol=Number($(`vol${d.id}`).value);
+ const vol=smoothVolumeCurve(rawVol);
+ const hardMute=(rawVol<=0)||allEqAtMinimum;
+ const targetGain=hardMute?0:Math.pow(10,g/20)*vol*0.501187;
  const param=d.nodes.gain.gain;
  param.cancelScheduledValues(now);
- param.setTargetAtTime(targetGain,now,.008);
+ if(hardMute)param.setValueAtTime(0,now);
+ else param.setTargetAtTime(targetGain,now,.008);
  $(`gainVal${d.id}`).textContent=(g>0?'+':'')+g+' dB';
  $(`volVal${d.id}`).textContent=Math.round(vol*100)+'%';
 }
@@ -483,7 +524,7 @@ function currentPosition(d,now=ctx?ctx.currentTime:0){if(!d.playing)return d.pos
 function updatePosition(d){if(d.playing&&ctx){d.pos=currentPosition(d);d.lastCtxTime=ctx.currentTime}}
 function stopSource(d){if(d.source){const s=d.source;d.source=null;try{s.onended=null;s.stop()}catch(_){}try{s.disconnect()}catch(_){}}}
 function syncMixerPlayButton(id){const b=$('mixerPlay'+id);if(!b)return;const playing=!!decks[id].playing;b.textContent=playing?'Ⅱ':'▶';b.classList.toggle('is-playing',playing);b.setAttribute('aria-label',(playing?'Pozastavit':'Přehrát')+' desku '+id);}
-function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted)window.PulseDeckAndroid.playbackStarted();stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);return true}
+function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted){try{window.PulseDeckAndroid.playbackStarted()}catch(e){console.warn('Playback service start failed',e)}}$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);return true}
 function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}
 function beatPhase(d,atCtxTime=ctx.currentTime){const p=currentPosition(d,atCtxTime);return (( ((p-d.beatOffset)*d.bpm/60)%1)+1)%1}
 function setRate(d,rate){rate=clamp(rate,.25,3);if(d.playing&&ctx){if(ctx.currentTime>=d.lastCtxTime){updatePosition(d);d.lastCtxTime=ctx.currentTime}d.rate=rate;try{d.source.playbackRate.setTargetAtTime(rate,Math.max(ctx.currentTime,d.lastCtxTime),.025)}catch(_){d.source.playbackRate.value=rate}}else d.rate=rate;}
@@ -491,7 +532,7 @@ function setMaster(d,automatic=false){if(!d||!d.bpm)return;masterDeck=d.id;maste
 function updateMasterAfterTransport(){if(masterDeck&&decks[masterDeck].playing)return;const other=Object.values(decks).find(d=>d.playing&&d.bpm);if(other){setMaster(other,false)}else{masterDeck=null;$('masterSource').textContent='Automatický master čeká na přehrávání';}}
 function nextAlignedPosition(d,phase,lead){const bpm=d.bpm,offset=d.beatOffset,cur=currentPosition(d);let beats=(cur-offset)*bpm/60;let n=Math.ceil(beats-phase+lead*masterBpm/60);let targetBeat=n+phase;if(targetBeat<beats+.02)targetBeat+=1;let p=offset+targetBeat*60/bpm;if(p>=d.duration-.05){p=offset+Math.max(0,Math.floor((d.duration-.05-offset)*bpm/60))*60/bpm}return clamp(p,0,Math.max(0,d.duration-.02))}
 async function playDeck(id){const d=decks[id];if(!d.buffer){msg('Nejdřív načti skladbu do Deck '+id+'.');return}if(d.playing){stopDeck(d,false);return}if(!ctx||ctx.state!=='running')await ensureEngine();else if(!d.nodes)buildNodes(d);
- const other=decks[id==='A'?'B':'A'];let rate=1,when=ctx.currentTime+.005,offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos;
+ const other=decks[id==='A'?'B':'A'];let rate=1,when=ctx.currentTime+.001,offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos;
  if(d.bpm){if(!masterDeck||!decks[masterDeck].playing){if(autoMaster){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();setMaster(d,false);if(autoMaster){$('masterBpmBig').textContent=masterBpm.toFixed(1);$('masterSource').textContent='Master: Deck '+id+' · '+masterBpm.toFixed(1)+' BPM'}}else if(other.playing&&other.bpm){masterBpm=target();masterDeck=other.id}
   if(autoMaster&&masterDeck===id){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();
   $('masterBpmBig').textContent=masterBpm.toFixed(1);rate=masterBpm/d.bpm;
