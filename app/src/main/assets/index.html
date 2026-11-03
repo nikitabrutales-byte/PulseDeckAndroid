@@ -587,11 +587,24 @@ window.PulseDeckDiagnostics={estimateBpm,refineBpm,detectOffset,makeEnvelope,ana
 
 // Persistent local track library (IndexedDB). Analysis is cached by file fingerprint.
 const LIB_DB='PulseDeckLocalLibrary',LIB_STORE='tracks';let libDb=null,libBusy=false;
-function openLibraryDb(){return new Promise((resolve,reject)=>{const req=indexedDB.open(LIB_DB,1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(LIB_STORE)){const st=db.createObjectStore(LIB_STORE,{keyPath:'id'});st.createIndex('name','name',{unique:false})}};req.onsuccess=()=>{libDb=req.result;resolve(libDb)};req.onerror=()=>reject(req.error)})}
+let libDbPromise=null;
+function openLibraryDb(){
+ if(libDb)return Promise.resolve(libDb);
+ if(libDbPromise)return libDbPromise;
+ libDbPromise=new Promise((resolve,reject)=>{
+  if(!window.indexedDB){reject(new Error('Toto prostředí nepodporuje místní databázi'));return}
+  const req=indexedDB.open(LIB_DB,1);
+  req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(LIB_STORE)){const st=db.createObjectStore(LIB_STORE,{keyPath:'id'});st.createIndex('name','name',{unique:false})}};
+  req.onsuccess=()=>{libDb=req.result;libDb.onversionchange=()=>{libDb.close();libDb=null;libDbPromise=null};resolve(libDb)};
+  req.onerror=()=>{libDbPromise=null;reject(req.error||new Error('Databázi se nepodařilo otevřít'))};
+  req.onblocked=()=>{libDbPromise=null;reject(new Error('Databázi blokuje jiná otevřená verze aplikace'))};
+ });
+ return libDbPromise;
+}
 function libTx(mode='readonly'){return libDb.transaction(LIB_STORE,mode).objectStore(LIB_STORE)}
-function libAll(){return new Promise((resolve,reject)=>{const r=libTx().getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error)})}
-function libPut(item){return new Promise((resolve,reject)=>{const r=libTx('readwrite').put(item);r.onsuccess=()=>{resolve();if(!libBusy)saveLibraryToDevice()};r.onerror=()=>reject(r.error)})}
-function libDelete(id){return new Promise((resolve,reject)=>{const r=libTx('readwrite').delete(id);r.onsuccess=()=>{resolve();if(!libBusy)saveLibraryToDevice()};r.onerror=()=>reject(r.error)})}
+async function libAll(){await openLibraryDb();return new Promise((resolve,reject)=>{const r=libTx().getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error)})}
+async function libPut(item){await openLibraryDb();return new Promise((resolve,reject)=>{const r=libTx('readwrite').put(item);r.onsuccess=()=>{resolve();if(!libBusy)saveLibraryToDevice()};r.onerror=()=>reject(r.error)})}
+async function libDelete(id){await openLibraryDb();return new Promise((resolve,reject)=>{const r=libTx('readwrite').delete(id);r.onsuccess=()=>{resolve();if(!libBusy)saveLibraryToDevice()};r.onerror=()=>reject(r.error)})}
 let persistentLibraryReady=false,persistentSaveChain=Promise.resolve();
 function bytesToB64(bytes){let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(binary)}
 function b64ToBytes(value){const raw=atob(value),out=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out}
@@ -607,7 +620,7 @@ async function analyzeLibraryFile(file,index,total){const id=libId(file);const e
 async function processLibraryFiles(files){if(libBusy)return;libBusy=true;const list=Array.from(files||[]).filter(f=>f.type.startsWith('audio/')||/\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(f.name));if(!list.length){$('libraryStatus').textContent='Nebyly vybrány žádné podporované zvukové soubory.';libBusy=false;return}let done=0,errors=0;$('libraryStatus').textContent='Připravuji '+list.length+' skladeb…';for(const f of list){try{await analyzeLibraryFile(f,done,list.length)}catch(e){console.error('Library analysis',f.name,e);errors++}done++;$('libraryProgressBar').style.width=(done/list.length*100)+'%';$('libraryStatus').textContent='Analýza '+done+'/'+list.length+' · '+f.name}await renderLibrary();await saveLibraryToDevice();$('libraryStatus').textContent='Hotovo: '+(done-errors)+' analyzováno nebo načteno z cache'+(errors?', chyby: '+errors:'')+'. Výsledky jsou uložené místně.';libBusy=false}
 
 $('libraryFiles').addEventListener('change',e=>{processLibraryFiles(e.target.files);e.target.value=''});
-$('libraryFolder').addEventListener('change',e=>{processLibraryFiles(e.target.files);e.target.value=''});
+
 $('choosePersistentLibrary').addEventListener('click',()=>{if(window.PulseDeckAndroid&&window.PulseDeckAndroid.openPersistentLibraryPicker)window.PulseDeckAndroid.openPersistentLibraryPicker();else $('libraryStatus').textContent='Trvalé uložení vyžaduje Android aplikaci.'});
 $('restorePersistentLibrary').addEventListener('click',async()=>{
  if(libBusy)return;
@@ -677,7 +690,7 @@ async function onNativeFolderPicked(){
 }
 window.onNativeFolderPicked=onNativeFolderPicked;
 
-const oldSwitchScreen=switchScreen;switchScreen=function(which){if(which==='library'||which==='recording'){ $('deckScreen').hidden=true;$('mixerScreen').hidden=true;$('libraryScreen').hidden=which!=='library';$('recordingScreen').hidden=which!=='recording';for(const id of ['showDeckScreen','showMixerScreen','showLibraryScreen','showRecordingScreen']){const active=id===(which==='library'?'showLibraryScreen':'showRecordingScreen');$(id).classList.toggle('active',active);$(id).setAttribute('aria-pressed',String(active))}if(which==='library')renderLibrary().catch(console.error);return} $('libraryScreen').hidden=true;$('recordingScreen').hidden=true;oldSwitchScreen(which);for(const id of ['showLibraryScreen','showRecordingScreen']){$(id).classList.remove('active');$(id).setAttribute('aria-pressed','false')}};$('showLibraryScreen').addEventListener('click',()=>switchScreen('library'));$('showRecordingScreen').addEventListener('click',()=>switchScreen('recording'));
+const oldSwitchScreen=switchScreen;switchScreen=function(which){if(which==='library'||which==='recording'){ $('deckScreen').hidden=true;$('mixerScreen').hidden=true;$('libraryScreen').hidden=which!=='library';$('recordingScreen').hidden=which!=='recording';for(const id of ['showDeckScreen','showMixerScreen','showLibraryScreen','showRecordingScreen']){const active=id===(which==='library'?'showLibraryScreen':'showRecordingScreen');$(id).classList.toggle('active',active);$(id).setAttribute('aria-pressed',String(active))}if(which==='library')renderLibrary().catch(e=>{$('libraryStatus').textContent='Knihovnu nelze otevřít: '+e.message;console.error(e)});return} $('libraryScreen').hidden=true;$('recordingScreen').hidden=true;oldSwitchScreen(which);for(const id of ['showLibraryScreen','showRecordingScreen']){$(id).classList.remove('active');$(id).setAttribute('aria-pressed','false')}};$('showLibraryScreen').addEventListener('click',()=>switchScreen('library'));$('showRecordingScreen').addEventListener('click',()=>switchScreen('recording'));
 
 function syncVisibleTempo(){const v=Number($('masterTempoControl').value);$('targetBpm').value=v.toFixed(2);commitTarget()}
 $('masterTempoControl').addEventListener('change',syncVisibleTempo);$('masterTempoControl').addEventListener('keydown',e=>{if(e.key==='Enter')syncVisibleTempo()});
