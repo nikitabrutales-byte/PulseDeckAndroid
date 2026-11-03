@@ -469,8 +469,17 @@ document.addEventListener('pointerdown',warmAudioEngine,{once:true,passive:true}
 document.addEventListener('touchstart',warmAudioEngine,{once:true,passive:true});
 document.addEventListener('keydown',warmAudioEngine,{once:true});
 function buildNodes(d){if(!ctx||d.nodes)return;const low=ctx.createBiquadFilter();low.type='lowshelf';low.frequency.value=250;const mid=ctx.createBiquadFilter();mid.type='peaking';mid.frequency.value=1000;mid.Q.value=.8;const high=ctx.createBiquadFilter();high.type='highshelf';high.frequency.value=4500;const gain=ctx.createGain();const analyser=ctx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=.78;low.connect(mid);mid.connect(high);high.connect(gain);gain.connect(analyser);analyser.connect(masterGain);d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};applyDeck(d);}
-function smoothVolumeCurve(raw){const t=clamp(Number(raw)/100,0,1);return Math.pow(t,1.22)}
-function applyDeck(d){if(!d.nodes||!ctx)return;let allEqAtMinimum=true;for(const f of ['low','mid','high']){const control=$(`${f}${d.id}`),raw=Number(control.value),val=raw; if(raw>-59.999)allEqAtMinimum=false;d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.055);$(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB'}const g=+$(`gain${d.id}`).value,vol=smoothVolumeCurve($(`vol${d.id}`).value),eqMute=allEqAtMinimum?0:1;d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*eqMute,ctx.currentTime,.075);$(`gainVal${d.id}`).textContent=(g>0?'+':'')+g+' dB';$(`volVal${d.id}`).textContent=Math.round(vol*100)+'%';}
+function smoothVolumeCurve(raw){
+  const t=clamp(Number(raw)/100,0,1);
+  const knee=.70;
+  const start=Math.pow(knee,1.22);
+  if(t<=knee)return Math.pow(t,1.22);
+  const u=(t-knee)/(1-knee);
+  // Jemnejsi ovladani v horni casti: plynuly S-prechod bez skoku na 70 %.
+  const eased=u*u*(3-2*u);
+  return start+(1-start)*eased;
+}
+function applyDeck(d){if(!d.nodes||!ctx)return;let allEqAtMinimum=true;for(const f of ['low','mid','high']){const control=$(`${f}${d.id}`),raw=Number(control.value),val=raw; if(raw>-59.999)allEqAtMinimum=false;d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.055);$(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB'}const g=+$(`gain${d.id}`).value,vol=smoothVolumeCurve($(`vol${d.id}`).value),eqMute=allEqAtMinimum?0:1;d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*eqMute,ctx.currentTime,.12);$(`gainVal${d.id}`).textContent=(g>0?'+':'')+g+' dB';$(`volVal${d.id}`).textContent=Math.round(vol*100)+'%';}
 function setMasterVolume(){if(ctx&&masterGain)masterGain.gain.setTargetAtTime(+$('masterVol').value/100,ctx.currentTime,.025);$('masterVolVal').textContent=$('masterVol').value+'%'}
 function currentPosition(d,now=ctx?ctx.currentTime:0){if(!d.playing)return d.pos;if(now<d.lastCtxTime)return d.pos;return clamp(d.pos+(now-d.lastCtxTime)*d.rate,0,d.duration||Infinity)}
 function updatePosition(d){if(d.playing&&ctx){d.pos=currentPosition(d);d.lastCtxTime=ctx.currentTime}}
