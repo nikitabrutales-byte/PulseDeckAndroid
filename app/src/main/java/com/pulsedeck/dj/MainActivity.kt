@@ -34,7 +34,6 @@ class MainActivity : Activity() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
-
         selectedTreeUri = getPreferences(MODE_PRIVATE).getString("library_tree_uri", null)?.let(Uri::parse)
         webView = WebView(this)
         webView.setBackgroundColor(android.graphics.Color.rgb(16, 23, 34))
@@ -49,7 +48,6 @@ class MainActivity : Activity() {
         webView.settings.javaScriptCanOpenWindowsAutomatically = false
         webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         webView.addJavascriptInterface(PulseDeckFolderBridge(), "PulseDeckAndroid")
-
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return true
@@ -58,8 +56,7 @@ class MainActivity : Activity() {
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onShowFileChooser(
-                webView: WebView?,
-                filePathCallback: ValueCallback<Array<Uri>>?,
+                webView: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                 fileChooserParams: FileChooserParams?
             ): Boolean {
                 this@MainActivity.fileChooserCallback?.onReceiveValue(null)
@@ -79,10 +76,8 @@ class MainActivity : Activity() {
                     false
                 }
             }
-
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean = true
         }
-
         setContentView(webView)
         hideSystemBars()
         if (savedInstanceState == null) webView.loadUrl("file:///android_asset/index.html")
@@ -90,6 +85,27 @@ class MainActivity : Activity() {
     }
 
     private inner class PulseDeckFolderBridge {
+        @JavascriptInterface
+        fun playbackStarted() {
+            try {
+                val intent = Intent(this@MainActivity, PulseDeckPlaybackService::class.java)
+                    .setAction(PulseDeckPlaybackService.ACTION_PLAYING)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) startForegroundService(intent)
+                else startService(intent)
+            } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Could not start playback foreground service", e)
+            }
+        }
+
+        @JavascriptInterface
+        fun playbackStopped() {
+            try {
+                stopService(Intent(this@MainActivity, PulseDeckPlaybackService::class.java))
+            } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Could not stop playback foreground service", e)
+            }
+        }
+
         @JavascriptInterface
         fun openFolderPicker() {
             runOnUiThread {
@@ -147,21 +163,14 @@ class MainActivity : Activity() {
         var remaining = amount
         while (remaining > 0) {
             val skipped = input.skip(remaining)
-            if (skipped > 0) {
-                remaining -= skipped
-            } else {
-                if (input.read() == -1) return
-                remaining--
-            }
+            if (skipped > 0) remaining -= skipped
+            else { if (input.read() == -1) return; remaining-- }
         }
     }
 
     private fun appendAudioFiles(
-        treeUri: Uri,
-        parentDocumentId: String,
-        relativeParent: String,
-        output: JSONArray,
-        depth: Int
+        treeUri: Uri, parentDocumentId: String, relativeParent: String,
+        output: JSONArray, depth: Int
     ) {
         if (depth > 20 || output.length() >= 10000) return
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
@@ -199,9 +208,7 @@ class MainActivity : Activity() {
                     output.put(item)
                 }
             }
-        } finally {
-            cursor?.close()
-        }
+        } finally { cursor?.close() }
     }
 
     private fun isAudioFile(name: String, mime: String): Boolean {
@@ -213,24 +220,13 @@ class MainActivity : Activity() {
     private fun hideSystemBars() {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         )
     }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideSystemBars()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (::webView.isInitialized) hideSystemBars()
-    }
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) hideSystemBars() }
+    override fun onResume() { super.onResume(); if (::webView.isInitialized) hideSystemBars() }
 
     @Deprecated("Deprecated for broad device compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -238,33 +234,22 @@ class MainActivity : Activity() {
         if (requestCode == fileChooserRequestCode) {
             val callback = fileChooserCallback ?: return
             val result = if (resultCode == RESULT_OK) {
-                data?.clipData?.let { clip ->
-                    Array(clip.itemCount) { index -> clip.getItemAt(index).uri }
-                } ?: data?.data?.let { arrayOf(it) }
+                data?.clipData?.let { clip -> Array(clip.itemCount) { index -> clip.getItemAt(index).uri } }
+                    ?: data?.data?.let { arrayOf(it) }
             } else null
             callback.onReceiveValue(result)
             fileChooserCallback = null
         } else if (requestCode == folderChooserRequestCode && resultCode == RESULT_OK) {
             val tree = data?.data ?: return
             val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            try {
-                contentResolver.takePersistableUriPermission(tree, flags)
-            } catch (_: Exception) {
-                // The current grant remains usable for this app session even if persistence is unsupported.
-            }
+            try { contentResolver.takePersistableUriPermission(tree, flags) } catch (_: Exception) {}
             selectedTreeUri = tree
             getPreferences(MODE_PRIVATE).edit().putString("library_tree_uri", tree.toString()).apply()
-            webView.post {
-                webView.evaluateJavascript("window.onNativeFolderPicked && window.onNativeFolderPicked()", null)
-            }
+            webView.post { webView.evaluateJavascript("window.onNativeFolderPicked && window.onNativeFolderPicked()", null) }
         }
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        webView.saveState(outState)
-        super.onSaveInstanceState(outState)
-    }
-
+    override fun onSaveInstanceState(outState: Bundle) { webView.saveState(outState); super.onSaveInstanceState(outState) }
     override fun onDestroy() {
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
