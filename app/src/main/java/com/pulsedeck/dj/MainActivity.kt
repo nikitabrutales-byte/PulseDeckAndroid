@@ -42,7 +42,7 @@ class MainActivity : Activity() {
         selectedTreeUri = getPreferences(MODE_PRIVATE).getString("library_tree_uri", null)?.let(Uri::parse)
         persistentLibraryTreeUri = getPreferences(MODE_PRIVATE).getString("persistent_library_tree_uri", null)?.let(Uri::parse)
         webView = WebView(this)
-        webView.setBackgroundColor(android.graphics.Color.rgb(16, 16, 16))
+        webView.setBackgroundColor(android.graphics.Color.rgb(16, 23, 34))
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.allowFileAccess = true
