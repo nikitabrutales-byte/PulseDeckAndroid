@@ -8,6 +8,9 @@ import android.os.Bundle
 import android.provider.DocumentsContract
 import android.database.Cursor
 import android.util.Base64
+import android.os.ParcelFileDescriptor
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import android.view.View
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
@@ -27,6 +30,8 @@ class MainActivity : Activity() {
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private val fileChooserRequestCode = 9001
     private val folderChooserRequestCode = 9002
+    private val persistentLibraryRequestCode = 9003
+    private var persistentLibraryTreeUri: Uri? = null
     private var selectedTreeUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,6 +40,7 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
         selectedTreeUri = getPreferences(MODE_PRIVATE).getString("library_tree_uri", null)?.let(Uri::parse)
+        persistentLibraryTreeUri = getPreferences(MODE_PRIVATE).getString("persistent_library_tree_uri", null)?.let(Uri::parse)
         webView = WebView(this)
         webView.setBackgroundColor(android.graphics.Color.rgb(16, 23, 34))
         webView.settings.javaScriptEnabled = true
@@ -85,6 +91,91 @@ class MainActivity : Activity() {
     }
 
     private inner class PulseDeckFolderBridge {
+        @JavascriptInterface
+        fun openPersistentLibraryPicker() {
+            runOnUiThread {
+                try {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                        addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+                    }
+                    startActivityForResult(intent, persistentLibraryRequestCode)
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "Nelze vybrat složku pro trvalou knihovnu.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun hasPersistentLibrary(): Boolean = persistentLibraryTreeUri != null
+
+        @JavascriptInterface
+        fun writePersistentText(relativePath: String, content: String): Boolean {
+            return try {
+                val uri = ensurePersistentFile(relativePath)
+                contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(content) } ?: return false
+                true
+            } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Persistent text write failed: $relativePath", e)
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun readPersistentText(relativePath: String): String {
+            return try {
+                val uri = findPersistentFile(relativePath) ?: return ""
+                contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+            } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Persistent text read failed: $relativePath", e)
+                ""
+            }
+        }
+
+        @JavascriptInterface
+        fun writePersistentChunk(relativePath: String, offset: Long, base64: String, totalSize: Long): Boolean {
+            return try {
+                val uri = ensurePersistentFile(relativePath)
+                val bytes = Base64.decode(base64, Base64.DEFAULT)
+                val mode = if (offset <= 0L) "rwt" else "rw"
+                val pfd = contentResolver.openFileDescriptor(uri, mode) ?: return false
+                ParcelFileDescriptor.AutoCloseOutputStream(pfd).use { stream ->
+                    val channel = stream.channel
+                    channel.position(offset.coerceAtLeast(0L))
+                    var buffer = java.nio.ByteBuffer.wrap(bytes)
+                    while (buffer.hasRemaining()) channel.write(buffer)
+                }
+                true
+            } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Persistent audio write failed: $relativePath", e)
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun readPersistentChunk(relativePath: String, offset: Long, length: Int): String {
+            return try {
+                val uri = findPersistentFile(relativePath) ?: return ""
+                val pfd = contentResolver.openFileDescriptor(uri, "r") ?: return ""
+                ParcelFileDescriptor.AutoCloseInputStream(pfd).use { stream ->
+                    skipFully(stream, offset.coerceAtLeast(0L))
+                    val buffer = ByteArray(length.coerceIn(1, 262144))
+                    var count = 0
+                    while (count < buffer.size) {
+                        val n = stream.read(buffer, count, buffer.size - count)
+                        if (n <= 0) break
+                        count += n
+                    }
+                    if (count == 0) "" else Base64.encodeToString(buffer.copyOf(count), Base64.NO_WRAP)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Persistent audio read failed: $relativePath", e)
+                ""
+            }
+        }
+
         @JavascriptInterface
         fun playbackStarted() {
             try {
@@ -157,6 +248,66 @@ class MainActivity : Activity() {
                 ""
             }
         }
+    }
+
+    private fun findChildDocument(tree: Uri, parentId: String, name: String): Pair<String, Uri>? {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+        contentResolver.query(children, projection, null, null, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameCol) == name) {
+                    val id = cursor.getString(idCol)
+                    return id to DocumentsContract.buildDocumentUriUsingTree(tree, id)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun ensurePersistentDirectory(relativePath: String): Pair<String, Uri> {
+        val tree = persistentLibraryTreeUri ?: throw IllegalStateException("Trvalá složka není vybraná")
+        var parentId = DocumentsContract.getTreeDocumentId(tree)
+        var parentUri = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
+        val parts = ("PulseDeck/" + relativePath).split('/').filter { it.isNotBlank() }
+        for (part in parts) {
+            val existing = findChildDocument(tree, parentId, part)
+            if (existing != null) {
+                parentId = existing.first
+                parentUri = existing.second
+            } else {
+                val created = DocumentsContract.createDocument(contentResolver, parentUri, DocumentsContract.Document.MIME_TYPE_DIR, part)
+                    ?: throw IllegalStateException("Nelze vytvořit složku $part")
+                parentId = DocumentsContract.getDocumentId(created)
+                parentUri = created
+            }
+        }
+        return parentId to parentUri
+    }
+
+    private fun ensurePersistentFile(relativePath: String): Uri {
+        val parts = relativePath.split('/').filter { it.isNotBlank() }
+        require(parts.isNotEmpty()) { "Prázdná cesta" }
+        val parentPath = parts.dropLast(1).joinToString("/")
+        val parent = ensurePersistentDirectory(parentPath)
+        val tree = persistentLibraryTreeUri ?: throw IllegalStateException("Trvalá složka není vybraná")
+        val existing = findChildDocument(tree, parent.first, parts.last())
+        if (existing != null) return existing.second
+        return DocumentsContract.createDocument(contentResolver, parent.second, "application/octet-stream", parts.last())
+            ?: throw IllegalStateException("Nelze vytvořit soubor ${parts.last()}")
+    }
+
+    private fun findPersistentFile(relativePath: String): Uri? {
+        val tree = persistentLibraryTreeUri ?: return null
+        val parts = relativePath.split('/').filter { it.isNotBlank() }
+        if (parts.isEmpty()) return null
+        var parentId = DocumentsContract.getTreeDocumentId(tree)
+        for (part in ("PulseDeck/" + parts.dropLast(1).joinToString("/")).split('/').filter { it.isNotBlank() }) {
+            val child = findChildDocument(tree, parentId, part) ?: return null
+            parentId = child.first
+        }
+        return findChildDocument(tree, parentId, parts.last())?.second
     }
 
     private fun skipFully(input: InputStream, amount: Long) {
@@ -246,6 +397,23 @@ class MainActivity : Activity() {
             selectedTreeUri = tree
             getPreferences(MODE_PRIVATE).edit().putString("library_tree_uri", tree.toString()).apply()
             webView.post { webView.evaluateJavascript("window.onNativeFolderPicked && window.onNativeFolderPicked()", null) }
+        } else if (requestCode == persistentLibraryRequestCode && resultCode == RESULT_OK) {
+            val tree = data?.data ?: return
+            val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            try { contentResolver.takePersistableUriPermission(tree, flags) } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Cannot persist library folder permission", e)
+            }
+            persistentLibraryTreeUri = tree
+            getPreferences(MODE_PRIVATE).edit().putString("persistent_library_tree_uri", tree.toString()).apply()
+            try {
+                listOf("Library/Tracks", "Analysis", "Playlists", "Mix Projects", "Recordings", "Library Backup").forEach {
+                    ensurePersistentDirectory(it)
+                }
+                webView.post { webView.evaluateJavascript("window.onPersistentLibraryReady && window.onPersistentLibraryReady()", null) }
+            } catch (e: Exception) {
+                android.util.Log.e("PulseDeck", "Cannot initialize PulseDeck folder", e)
+                Toast.makeText(this, "Složku PulseDeck se nepodařilo připravit.", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
