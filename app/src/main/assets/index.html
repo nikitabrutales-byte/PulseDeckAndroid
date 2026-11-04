@@ -441,9 +441,9 @@ html,body{background:#101010!important;color:#eeeeee}
 'use strict';
 const $=id=>document.getElementById(id);
 const decks={A:createDeck('A'),B:createDeck('B')};
-let ctx=null,masterGain=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=null,mediaRecorder=null,recordChunks=[],frameRequest=0;
+let ctx=null,masterGain=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=null,mediaRecorder=null,recordChunks=[];
 function createDeck(id){return{id,buffer:null,peaks:null,bpm:0,beatOffset:0,duration:0,pos:0,lastCtxTime:0,rate:1,playing:false,source:null,nodes:null,loadToken:0,name:'',rms:0,analysisState:'empty',sourceToken:0}}
-function msg(text,kind=''){/* Rušivé vyskakovací hlášky jsou vypnuté; stav zůstává v příslušných ovládacích prvcích. */}
+function msg(text,kind=''){const el=$('toast');el.textContent=text;el.className='toast show '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.className='toast',3600)}
 function fmt(seconds){seconds=Math.max(0,Math.floor(seconds||0));return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function target(){return clamp(Number($('targetBpm').value)||138,30,220)}
@@ -451,8 +451,6 @@ function ensureEngine(){if(!ctx||ctx.state==='closed'){ctx=new(window.AudioConte
 // Warm the audio engine on the user's first real interaction, before PLAY is pressed.
 function warmAudioEngine(){try{ensureEngine().catch(()=>{});}catch(_){}}
 document.addEventListener('pointerdown',warmAudioEngine,{once:true,passive:true});
-document.addEventListener('touchstart',warmAudioEngine,{once:true,passive:true});
-document.addEventListener('keydown',warmAudioEngine,{once:true});
 function buildNodes(d){if(!ctx||d.nodes)return;const low=ctx.createBiquadFilter();low.type='lowshelf';low.frequency.value=250;const mid=ctx.createBiquadFilter();mid.type='peaking';mid.frequency.value=1000;mid.Q.value=.8;const high=ctx.createBiquadFilter();high.type='highshelf';high.frequency.value=4500;const gain=ctx.createGain();const analyser=ctx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=.78;low.connect(mid);mid.connect(high);high.connect(gain);gain.connect(analyser);analyser.connect(masterGain);d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};applyDeck(d);}
 function smoothVolumeCurve(raw){
  // Plny linearni rozsah 0–100 %: kazdy milimetr drahy meni hlasitost.
@@ -483,17 +481,22 @@ function currentPosition(d,now=ctx?ctx.currentTime:0){if(!d.playing)return d.pos
 function updatePosition(d){if(d.playing&&ctx){d.pos=currentPosition(d);d.lastCtxTime=ctx.currentTime}}
 function stopSource(d){if(d.source){const s=d.source;d.source=null;try{s.onended=null;s.stop()}catch(_){}try{s.disconnect()}catch(_){}}}
 function syncMixerPlayButton(id){const b=$('mixerPlay'+id);if(!b)return;const playing=!!decks[id].playing;b.textContent=playing?'Ⅱ':'▶';b.classList.toggle('is-playing',playing);b.setAttribute('aria-label',(playing?'Pozastavit':'Přehrát')+' desku '+id);}
-function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();if(!Object.values(decks).some(x=>x.playing))stopFrameLoop()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);startFrameLoop();if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted){try{window.PulseDeckAndroid.playbackStarted()}catch(_){}}$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);return true}
-function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;if(!Object.values(decks).some(x=>x.playing))stopFrameLoop();$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}
+function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted){try{window.PulseDeckAndroid.playbackStarted()}catch(_){}}$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);return true}
+function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}
 function beatPhase(d,atCtxTime=ctx.currentTime){const p=currentPosition(d,atCtxTime);return (( ((p-d.beatOffset)*d.bpm/60)%1)+1)%1}
 function setRate(d,rate){rate=clamp(rate,.25,3);if(d.playing&&ctx){if(ctx.currentTime>=d.lastCtxTime){updatePosition(d);d.lastCtxTime=ctx.currentTime}d.rate=rate;try{d.source.playbackRate.setTargetAtTime(rate,Math.max(ctx.currentTime,d.lastCtxTime),.025)}catch(_){d.source.playbackRate.value=rate}}else d.rate=rate;}
 function setMaster(d,automatic=false){if(!d||!d.bpm)return;masterDeck=d.id;masterBpm=target();if(automatic&&autoMaster){masterBpm=d.bpm;$('targetBpm').value=masterBpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1)}$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';$('masterSource').classList.remove('busy');}
 function updateMasterAfterTransport(){if(masterDeck&&decks[masterDeck].playing)return;const other=Object.values(decks).find(d=>d.playing&&d.bpm);if(other){setMaster(other,false)}else{masterDeck=null;$('masterSource').textContent='Automatický master čeká na přehrávání';}}
 function nextAlignedPosition(d,phase,lead){const bpm=d.bpm,offset=d.beatOffset,cur=currentPosition(d);let beats=(cur-offset)*bpm/60;let n=Math.ceil(beats-phase+lead*masterBpm/60);let targetBeat=n+phase;if(targetBeat<beats+.02)targetBeat+=1;let p=offset+targetBeat*60/bpm;if(p>=d.duration-.05){p=offset+Math.max(0,Math.floor((d.duration-.05-offset)*bpm/60))*60/bpm}return clamp(p,0,Math.max(0,d.duration-.02))}
-async function playDeck(id){const d=decks[id];if(!d.buffer){msg('Nejdřív načti skladbu do Deck '+id+'.');return}if(d.playing){stopDeck(d,false);return}if(!ctx||ctx.state!=='running')await ensureEngine();else if(!d.nodes)buildNodes(d);
+function playDeck(id){const d=decks[id];if(!d.buffer){msg('Nejdřív načti skladbu do Deck '+id+'.');return}if(d.playing){stopDeck(d,false);return}
+ // Resume AudioContext synchronously in the trusted pointer event. Do not await it:
+ // source.start() is queued immediately on the same gesture, eliminating the old async gap.
+ let resumePromise=null;
+ try{resumePromise=ensureEngine();if(resumePromise&&typeof resumePromise.catch==='function')resumePromise.catch(err=>{console.error('Audio engine resume',err);msg('Zvukové jádro se nepodařilo obnovit.');});}catch(err){console.error('Audio engine activation',err);msg('Zvukové jádro se nepodařilo aktivovat.');return}
+ if(!d.nodes)buildNodes(d);
  const other=decks[id==='A'?'B':'A'];let rate=1,when=ctx.currentTime,offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos;
- if(d.bpm){if(!masterDeck||!decks[masterDeck].playing){if(autoMaster){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();setMaster(d,false);if(autoMaster){$('masterBpmBig').textContent=masterBpm.toFixed(1);$('masterSource').textContent='Master: Deck '+id+' · '+masterBpm.toFixed(1)+' BPM'}}else if(other.playing&&other.bpm){masterBpm=target();masterDeck=other.id}
-  if(autoMaster&&masterDeck===id){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();
+ if(d.bpm){if(!masterDeck||!decks[masterDeck].playing){if(autoMaster){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();setMaster(d,false);if(autoMaster){$('masterBpmBig').textContent=masterBpm.toFixed(1);$('masterSource').textContent='Master: Deck '+id+' · '+masterBpm.toFixed(1)+' BPM'}}else if(other.playing&&other.bpm){masterBpm=autoMaster?other.bpm:target();masterDeck=other.id;if(autoMaster)$('targetBpm').value=masterBpm.toFixed(2)}
+  if(autoMaster&&masterDeck===id){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else if(!autoMaster){masterBpm=target()}
   $('masterBpmBig').textContent=masterBpm.toFixed(1);rate=masterBpm/d.bpm;
   if(rate<.25||rate>3){msg('Cílové tempo je mimo podporovaný rozsah rychlosti 0,25× až 3×.');return}
   if(other.playing&&other.bpm){const phase=beatPhase(other,when);offset=nextAlignedPosition(d,phase,.10);setMaster(other,false);$('syncState'+id).textContent='AUTO BEATSYNC · TEMPO + FÁZE';$('syncState'+id).classList.add('ok')}
@@ -511,6 +514,19 @@ function makePeaks(buffer,bins=1500){const data=buffer.getChannelData(0),step=Ma
 function makeEnvelope(samples,sr){const hop=512,env=[];let prev=0;for(let i=0;i<samples.length;i+=hop){let sum=0,n=Math.min(hop,samples.length-i);for(let j=i;j<i+n;j++)sum+=samples[j]*samples[j];const rms=Math.sqrt(sum/Math.max(1,n));env.push(Math.max(0,rms-prev));prev=rms}let mean=env.reduce((a,b)=>a+b,0)/Math.max(1,env.length);for(let i=0;i<env.length;i++)env[i]=Math.max(0,env[i]-mean);return{env,sr,hop}}
 function estimateBpm(samples,sr){const {env,hop}=makeEnvelope(samples,sr);if(env.length<80)return 0;const min=Math.max(1,Math.floor(60/180*sr/hop)),max=Math.min(env.length-2,Math.ceil(60/70*sr/hop));const energy=new Float64Array(env.length+1);for(let i=0;i<env.length;i++)energy[i+1]=energy[i]+env[i]*env[i];let scores=[];const scoreLag=new Float64Array(max+1);for(let lag=min;lag<=max;lag++){let cross=0;for(let i=lag;i<env.length;i++)cross+=env[i]*env[i-lag];const score=cross/Math.sqrt(Math.max(1e-15,energy[env.length-lag]*(energy[env.length]-energy[lag])));scoreLag[lag]=score;scores.push({lag,bpm:60*sr/(lag*hop),score})}scores.sort((a,b)=>b.score-a.score);if(!scores.length)return 0;let best=scores[0];const dance=scores.find(x=>x.bpm>=100&&x.bpm<=160);if(dance&&dance.score>=best.score*.78)best=dance;if(best.bpm<90){const twice=scores.find(x=>x.bpm>=110&&x.bpm<=180&&Math.abs(x.bpm-best.bpm*2)<2.5);if(twice&&twice.score>=best.score*.52)best=twice}if(best.bpm>165){const half=scores.find(x=>x.bpm>=80&&x.bpm<=100&&Math.abs(x.bpm-best.bpm/2)<2.5);if(half&&half.score>=best.score*.68)best=half}const prev=scoreLag[best.lag-1]||0,center=scoreLag[best.lag]||0,next=scoreLag[best.lag+1]||0,den=prev-2*center+next;let delta=Math.abs(den)>1e-12?.5*(prev-next)/den:0;delta=clamp(delta,-.5,.5);return clamp(60*sr/((best.lag+delta)*hop),70,180)}
 function refineBpm(samples,sr,rough){const {env,hop}=makeEnvelope(samples,sr);let best=rough,bestScore=-1;for(let bpm=Math.max(70,rough-2);bpm<=Math.min(180,rough+2);bpm+=.02){const period=60/bpm,bins=96,hist=new Float64Array(bins);for(let i=0;i<env.length;i++){const v=env[i];if(v<=0)continue;const t=i*hop/sr,phase=((t%period)+period)%period;hist[Math.floor(phase/period*bins)%bins]+=v}let score=0;for(let i=0;i<bins;i++){const v=hist[i]*4+(hist[(i+95)%96]+hist[(i+1)%96])*3+(hist[(i+94)%96]+hist[(i+2)%96])*2+hist[(i+93)%96]+hist[(i+3)%96];if(v>score)score=v}if(score>bestScore){bestScore=score;best=bpm}}return Math.round(best*100)/100}
+function makeAnalysisSamples(buffer,maxSeconds=60){
+ const count=Math.min(buffer.length,Math.floor(buffer.sampleRate*maxSeconds));
+ const channels=buffer.numberOfChannels||1;
+ let bestChannel=0,bestEnergy=-1;
+ for(let c=0;c<channels;c++){
+  const data=buffer.getChannelData(c);let energy=0;
+  // Sparse RMS scan is sufficient to choose the cleanest/strongest channel.
+  const stride= Math.max(1,Math.floor(count/120000));
+  for(let i=0;i<count;i+=stride){const v=data[i];energy+=v*v}
+  if(energy>bestEnergy){bestEnergy=energy;bestChannel=c}
+ }
+ return buffer.getChannelData(bestChannel).slice(0,count);
+}
 function detectOffset(samples,sr,bpm){
  const {env,hop}=makeEnvelope(samples,sr),period=60/bpm,bins=240,hist=new Float64Array(bins),onsets=[];
  for(let i=2;i<env.length-2;i++){
@@ -524,25 +540,53 @@ function detectOffset(samples,sr,bpm){
  for(let i=0;i<bins;i++)for(let d=-4;d<=4;d++)sm[i]+=hist[(i+d+bins)%bins]*(5-Math.abs(d));
  let best=0;for(let i=1;i<bins;i++)if(sm[i]>sm[best])best=i;
  if(!(sm[best]>0))return onsets[0].t;
- // Use the center of the strongest phase cluster and then find its earliest credible onset.
+ // Grid Marker is an absolute track position. Returning t % period would
+ // incorrectly jump CUE into the intro when the file begins with silence.
  const phaseCenter=(best+.5)/bins;
  const tolerance=.075;
  let earliest=null;
  for(const o of onsets){
-  if(o.t>12)break;
   const phase=((o.t%period)+period)%period/period;
   const dist=Math.min(Math.abs(phase-phaseCenter),1-Math.abs(phase-phaseCenter));
   if(dist<=tolerance&&(!earliest||o.t<earliest.t))earliest=o;
  }
- // If the first 12 s contain no onset in the winning phase, retain the robust grid anchor.
- if(earliest){
-  const cycles=Math.round((earliest.t%period)/period);
-  return ((earliest.t%period)+period)%period;
- }
- return (best/bins)*period;
+ // Keep the real first detected beat (including leading silence), not its modulo.
+ return earliest?earliest.t:onsets[0].t;
 }
-function analyzeInWorker(buffer){return new Promise(resolve=>{const fallback=()=>{try{const s=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));let bpm=refineBpm(s,buffer.sampleRate,estimateBpm(s,buffer.sampleRate));resolve({bpm,offset:detectOffset(s,buffer.sampleRate,bpm)})}catch(_){resolve({bpm:0,offset:0})}};if(!window.Worker){fallback();return}let worker,url,done=false;const finish=r=>{if(done)return;done=true;try{worker&&worker.terminate()}catch(_){}try{url&&URL.revokeObjectURL(url)}catch(_){}resolve(r||{bpm:0,offset:0})};try{const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));const code=[clamp.toString(),makeEnvelope.toString(),estimateBpm.toString(),refineBpm.toString(),detectOffset.toString(),"self.onmessage=function(e){try{const s=new Float32Array(e.data.samples),sr=e.data.sr;const rough=estimateBpm(s,sr);const bpm=refineBpm(s,sr,rough);const offset=detectOffset(s,sr,bpm);self.postMessage({bpm:bpm,offset:offset})}catch(err){self.postMessage({bpm:0,offset:0,error:String(err)})}}"].join('\n');url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));worker=new Worker(url);worker.onmessage=e=>{if(!e.data||!e.data.bpm){try{worker.terminate();URL.revokeObjectURL(url)}catch(_){}worker=null;url=null;fallback()}else finish(e.data)};worker.onerror=()=>{try{worker.terminate();URL.revokeObjectURL(url)}catch(_){}worker=null;url=null;fallback()};worker.postMessage({sr:buffer.sampleRate,samples:samples.buffer},[samples.buffer])}catch(_){fallback()}})}
-async function loadDeck(id,file){if(!file)return;const d=decks[id],token=++d.loadToken;stopDeck(d,true);d.buffer=null;d.peaks=null;d.bpm=0;d.beatOffset=0;d.analysisState='loading';d.name=file.name;$('name'+id).textContent=file.name;$('bpm'+id).textContent='—';$('bpmTag'+id).textContent='DEKÓDUJI…';$('syncState'+id).textContent='Načítání zvuku';$('syncState'+id).classList.remove('ok');msg('Načítám '+file.name+'…');try{const bytes=await file.arrayBuffer();if(d.loadToken!==token)return;const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}if(d.loadToken!==token)return;d.buffer=buffer;d.duration=buffer.duration;d.pos=0;d.peaks=makePeaks(buffer);drawWave(d);$('length'+id).textContent=fmt(d.duration);$('bpmTag'+id).textContent='ANALÝZA BPM…';$('syncState'+id).textContent='Skladba připravena · analyzuji rytmus';d.analysisState='analyzing';if(ctx)buildNodes(d);const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));const result=await analyzeInWorker({sampleRate:buffer.sampleRate,length:samples.length,numberOfChannels:1,getChannelData:()=>samples});if(d.loadToken!==token)return;d.bpm=result.bpm;d.beatOffset=result.offset;d.analysisState='ready';$('bpm'+id).textContent=d.bpm?d.bpm.toFixed(1):'—';$('bpmTag'+id).textContent=d.bpm?'BPM · PRVNÍ ÚDER NALEZEN':'BPM NEZJIŠTĚNO';$('syncState'+id).textContent=d.bpm?'Beatgrid připraven · Auto Sync':'Analýza rytmu se nezdařila';$('syncState'+id).classList.toggle('ok',!!d.bpm);if(d.bpm&&d.playing){const other=decks[id==='A'?'B':'A'];if(other.playing&&other.bpm){masterBpm=autoMaster?other.bpm:target();$('targetBpm').value=autoMaster?masterBpm.toFixed(2):$('targetBpm').value;const when=ctx.currentTime+.008,phase=beatPhase(other,when),pos=nextAlignedPosition(d,phase,.04);stopSource(d);d.playing=false;startSource(d,when,pos,masterBpm/d.bpm);setMaster(other,false)}else{if(autoMaster){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();setRate(d,masterBpm/d.bpm);setMaster(d,false)}}msg('Analýza Deck '+id+': '+(d.bpm?d.bpm.toFixed(2)+' BPM':'tempo nebylo spolehlivě určeno')+'.');$('masterBpmBig').textContent=masterBpm.toFixed(1);$('syncSummary').textContent=d.bpm?'Beatgrid připraven · společné hodiny aktivní':'Zkus WAV nebo jinou skladbu';}catch(err){if(d.loadToken!==token)return;console.error(err);d.analysisState='error';$('bpmTag'+id).textContent='CHYBA';$('syncState'+id).textContent='Nepodařilo se dekódovat skladbu';msg('Soubor nejde dekódovat v tomto prohlížeči. Zkus MP3 nebo WAV.')}}
+function analyzeInWorker(buffer){
+ return new Promise(resolve=>{
+  const sampleRate=buffer.sampleRate;
+  const samples=makeAnalysisSamples(buffer,60);
+  const fallback=()=>{
+   // Keep expensive beat analysis off the UI thread.
+   // If Workers are unavailable, leave BPM unset instead of freezing playback.
+   resolve({bpm:0,offset:0,analysisUnavailable:true});
+  };
+  if(!window.Worker){fallback();return}
+  let worker=null,url=null,done=false,timer=null;
+  const finish=result=>{
+   if(done)return;done=true;
+   if(timer)clearTimeout(timer);
+   try{if(worker)worker.terminate()}catch(_){}
+   try{if(url)URL.revokeObjectURL(url)}catch(_){}
+   resolve(result||{bpm:0,offset:0});
+  };
+  try{
+   const code=[
+    clamp.toString(),makeEnvelope.toString(),estimateBpm.toString(),
+    refineBpm.toString(),detectOffset.toString(),
+    "self.onmessage=function(e){try{const s=new Float32Array(e.data.samples),sr=e.data.sr;const rough=estimateBpm(s,sr);if(!rough){self.postMessage({bpm:0,offset:0});return}const bpm=refineBpm(s,sr,rough);const offset=detectOffset(s,sr,bpm);self.postMessage({bpm:bpm,offset:offset})}catch(err){self.postMessage({bpm:0,offset:0,error:String(err)})}}"
+   ].join('\n');
+   url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));
+   worker=new Worker(url);
+   worker.onmessage=e=>finish(e.data);
+   worker.onerror=()=>finish({bpm:0,offset:0});
+   timer=setTimeout(()=>finish({bpm:0,offset:0,analysisTimeout:true}),12000);
+   worker.postMessage({sr:sampleRate,samples:samples.buffer},[samples.buffer]);
+  }catch(_){finish({bpm:0,offset:0})}
+ });
+}
+async function loadDeck(id,file){if(!file)return;const d=decks[id],token=++d.loadToken;stopDeck(d,true);d.buffer=null;d.peaks=null;d.bpm=0;d.beatOffset=0;d.analysisState='loading';d.name=file.name;$('name'+id).textContent=file.name;$('bpm'+id).textContent='—';$('bpmTag'+id).textContent='DEKÓDUJI…';$('syncState'+id).textContent='Načítání zvuku';$('syncState'+id).classList.remove('ok');msg('Načítám '+file.name+'…');try{const bytes=await file.arrayBuffer();if(d.loadToken!==token)return;const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}if(d.loadToken!==token)return;d.buffer=buffer;d.duration=buffer.duration;d.pos=0;d.peaks=makePeaks(buffer);drawWave(d);$('length'+id).textContent=fmt(d.duration);$('bpmTag'+id).textContent='ANALÝZA BPM…';$('syncState'+id).textContent='Skladba připravena · analyzuji rytmus';d.analysisState='analyzing';if(ctx)buildNodes(d);const samples=makeAnalysisSamples(buffer,60);const result=await analyzeInWorker({sampleRate:buffer.sampleRate,length:samples.length,numberOfChannels:1,getChannelData:()=>samples});if(d.loadToken!==token)return;d.bpm=result.bpm;d.beatOffset=result.offset;d.analysisState='ready';$('bpm'+id).textContent=d.bpm?d.bpm.toFixed(1):'—';$('bpmTag'+id).textContent=d.bpm?'BPM · PRVNÍ ÚDER NALEZEN':'BPM NEZJIŠTĚNO';$('syncState'+id).textContent=d.bpm?'Beatgrid připraven · Auto Sync':'Analýza rytmu se nezdařila';$('syncState'+id).classList.toggle('ok',!!d.bpm);if(d.bpm&&d.playing){const other=decks[id==='A'?'B':'A'];if(other.playing&&other.bpm){masterBpm=autoMaster?other.bpm:target();$('targetBpm').value=autoMaster?masterBpm.toFixed(2):$('targetBpm').value;const when=ctx.currentTime+.008,phase=beatPhase(other,when),pos=nextAlignedPosition(d,phase,.04);stopSource(d);d.playing=false;startSource(d,when,pos,masterBpm/d.bpm);setMaster(other,false)}else{if(autoMaster){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();setRate(d,masterBpm/d.bpm);setMaster(d,false)}}msg('Analýza Deck '+id+': '+(d.bpm?d.bpm.toFixed(2)+' BPM':'tempo nebylo spolehlivě určeno')+'.');$('masterBpmBig').textContent=masterBpm.toFixed(1);$('syncSummary').textContent=d.bpm?'Beatgrid připraven · společné hodiny aktivní':'Zkus WAV nebo jinou skladbu';}catch(err){if(d.loadToken!==token)return;console.error(err);d.analysisState='error';$('bpmTag'+id).textContent='CHYBA';$('syncState'+id).textContent='Nepodařilo se dekódovat skladbu';msg('Soubor nejde dekódovat v tomto prohlížeči. Zkus MP3 nebo WAV.')}}
 
 // Minimal deck-local navigation: each transparent arrow seeks exactly 16 beats.
 function beatLength(d){return 60/(d.bpm||masterBpm||138)}
@@ -579,10 +623,7 @@ for(const id of ['A','B']){
  $('forward16'+id).addEventListener('click',()=>jumpBeats(id,1));
 }
 
-function stopFrameLoop(){if(frameRequest){cancelAnimationFrame(frameRequest);frameRequest=0}}
-function startFrameLoop(){if(frameRequest||document.hidden)return;frameRequest=requestAnimationFrame(frame)}
-function frame(now){frameRequest=0;if(document.hidden)return;if(ctx){correctSync(now);if(now-lastPaint>80){lastPaint=now;if(!$('deckScreen').hidden){for(const d of Object.values(decks))if(d.buffer&&(d.playing||d.pos>0))paintDeck(d)}}}if(Object.values(decks).some(d=>d.playing))startFrameLoop()}
-
+function frame(now){if(ctx){correctSync(now);if(now-lastPaint>45){lastPaint=now;for(const d of Object.values(decks))if(d.buffer)paintDeck(d)}}requestAnimationFrame(frame)}
 
 function switchScreen(which){
  const isDecks=which==='decks';
@@ -600,8 +641,8 @@ for(const id of ['A','B']){
 for(const id of ['A','B'])$('mixerPlay'+id).addEventListener('click',()=>playDeck(id).catch(e=>{console.error(e);msg('Chyba při spuštění zvuku.')}));
 for(const id of ['A','B'])syncMixerPlayButton(id);
 
-for(const id of ['A','B']){$('load'+id).onclick=()=>{$('file'+id).value='';$('file'+id).click()};$('file'+id).onchange=e=>loadDeck(id,e.target.files[0]);$('play'+id).addEventListener('pointerdown',warmAudioEngine,{passive:true});$('play'+id).onclick=()=>playDeck(id).catch(e=>{console.error(e);msg('Chyba při spuštění zvuku.')});$('cue'+id).onclick=()=>setCue(id);$('stop'+id).onclick=()=>stopDeck(decks[id],true);for(const key of ['gain','vol','high','mid','low'])$(`${key}${id}`).addEventListener('input',()=>applyDeck(decks[id]));}
-$('masterVol').addEventListener('input',setMasterVolume);$('targetBpm').addEventListener('change',commitTarget);$('targetBpm').addEventListener('keydown',e=>{if(e.key==='Enter')commitTarget()});$('autoMaster').addEventListener('change',e=>{autoMaster=e.target.checked;if(autoMaster){const d=(masterDeck&&decks[masterDeck].playing&&decks[masterDeck].bpm)?decks[masterDeck]:Object.values(decks).find(x=>x.playing&&x.bpm);if(d&&d.bpm){masterDeck=d.id;masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1);$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';for(const x of Object.values(decks))if(x.playing&&x.bpm)setRate(x,masterBpm/x.bpm)}}});window.addEventListener('resize',()=>Object.values(decks).forEach(drawWave));document.addEventListener('visibilitychange',()=>{if(document.hidden){stopFrameLoop()}else{if(ctx&&ctx.state==='suspended')ctx.resume().catch(()=>{});startFrameLoop();for(const d of Object.values(decks))if(d.buffer&&d.playing)paintDeck(d)}});drawWave(decks.A);drawWave(decks.B);
+for(const id of ['A','B']){$('load'+id).onclick=()=>{$('file'+id).value='';$('file'+id).click()};$('file'+id).onchange=e=>loadDeck(id,e.target.files[0]);$('play'+id).onclick=()=>playDeck(id).catch(e=>{console.error(e);msg('Chyba při spuštění zvuku.')});$('cue'+id).onclick=()=>setCue(id);$('stop'+id).onclick=()=>stopDeck(decks[id],true);for(const key of ['gain','vol','high','mid','low'])$(`${key}${id}`).addEventListener('input',()=>applyDeck(decks[id]));}
+$('masterVol').addEventListener('input',setMasterVolume);$('targetBpm').addEventListener('change',commitTarget);$('targetBpm').addEventListener('keydown',e=>{if(e.key==='Enter')commitTarget()});$('autoMaster').addEventListener('change',e=>{autoMaster=e.target.checked;if(autoMaster){const d=(masterDeck&&decks[masterDeck].playing&&decks[masterDeck].bpm)?decks[masterDeck]:Object.values(decks).find(x=>x.playing&&x.bpm);if(d&&d.bpm){masterDeck=d.id;masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1);$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';for(const x of Object.values(decks))if(x.playing&&x.bpm)setRate(x,masterBpm/x.bpm)}}});window.addEventListener('resize',()=>Object.values(decks).forEach(drawWave));document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ctx&&ctx.state==='suspended')ctx.resume()});drawWave(decks.A);drawWave(decks.B);requestAnimationFrame(frame);
 // Export a tiny diagnostics hook for automated browser tests, not needed for normal operation.
 window.PulseDeckDiagnostics={estimateBpm,refineBpm,detectOffset,makeEnvelope,analyzeInWorker,beatPhase,correctSync,get state(){return{masterBpm,masterDeck,playing:Object.fromEntries(Object.entries(decks).map(([k,d])=>[k,d.playing])),bpm:Object.fromEntries(Object.entries(decks).map(([k,d])=>[k,d.bpm]))}}};
 
@@ -636,7 +677,7 @@ function libId(f){return [f.webkitRelativePath||f.relativePath||f.name,f.size,f.
 function libTime(n){return fmt(n||0)}
 function libSafe(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function renderLibrary(){const items=(await libAll()).sort((a,b)=>a.name.localeCompare(b.name));$('libraryCount').textContent=items.length+' TRACKŮ';$('libraryList').innerHTML=items.length?items.map(x=>`<div class="library-row"><span class="library-track" title="${libSafe(x.name)}">${libSafe(x.name)}</span><span class="library-muted">${libTime(x.duration)}</span><b>${x.bpm?x.bpm.toFixed(1):'—'}</b><span class="library-muted">${x.offset!=null?x.offset.toFixed(3)+' s':'—'}</span><span class="library-row-actions"><button data-load-a="${libSafe(x.id)}">NAČÍST A</button><button data-load-b="${libSafe(x.id)}">NAČÍST B</button><button data-del="${libSafe(x.id)}">×</button></span></div>`).join(''):'<div class="library-empty">Knihovna je zatím prázdná.</div>';document.querySelectorAll('[data-load-a],[data-load-b]').forEach(b=>b.onclick=async()=>{const id=b.dataset.loadA||b.dataset.loadB;const deck=b.dataset.loadA?'A':'B';const x=(await libAll()).find(t=>t.id===id);if(x){switchScreen('decks');await loadDeck(deck,new File([x.blob],x.name,{type:x.type||'audio/mpeg',lastModified:x.lastModified||Date.now()}))}});document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await libDelete(b.dataset.del);renderLibrary()})}
-async function analyzeLibraryFile(file,index,total){const id=libId(file);const existing=(await libAll()).find(x=>x.id===id);if(existing&&existing.bpm){return}const bytes=await file.arrayBuffer();const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*60));const result=await analyzeInWorker({sampleRate:buffer.sampleRate,length:samples.length,numberOfChannels:1,getChannelData:()=>samples});await libPut({id,name:file.name,size:file.size,lastModified:file.lastModified||0,type:file.type||'audio/mpeg',duration:buffer.duration,bpm:result.bpm||0,offset:result.offset||0,blob:new Blob([bytes],{type:file.type||'audio/mpeg'}),analyzedAt:Date.now()});}
+async function analyzeLibraryFile(file,index,total){const id=libId(file);const existing=(await libAll()).find(x=>x.id===id);if(existing&&existing.bpm){return}const bytes=await file.arrayBuffer();const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}const samples=makeAnalysisSamples(buffer,60);const result=await analyzeInWorker({sampleRate:buffer.sampleRate,length:samples.length,numberOfChannels:1,getChannelData:()=>samples});await libPut({id,name:file.name,size:file.size,lastModified:file.lastModified||0,type:file.type||'audio/mpeg',duration:buffer.duration,bpm:result.bpm||0,offset:result.offset||0,blob:new Blob([bytes],{type:file.type||'audio/mpeg'}),analyzedAt:Date.now()});}
 async function processLibraryFiles(files){if(libBusy)return;libBusy=true;const list=Array.from(files||[]).filter(f=>f.type.startsWith('audio/')||/\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(f.name));if(!list.length){$('libraryStatus').textContent='Nebyly vybrány žádné podporované zvukové soubory.';libBusy=false;return}let done=0,errors=0;$('libraryStatus').textContent='Připravuji '+list.length+' skladeb…';for(const f of list){try{await analyzeLibraryFile(f,done,list.length)}catch(e){console.error('Library analysis',f.name,e);errors++}done++;$('libraryProgressBar').style.width=(done/list.length*100)+'%';$('libraryStatus').textContent='Analýza '+done+'/'+list.length+' · '+f.name}await renderLibrary();await saveLibraryToDevice();$('libraryStatus').textContent='Hotovo: '+(done-errors)+' analyzováno nebo načteno z cache'+(errors?', chyby: '+errors:'')+'. Výsledky jsou uložené místně.';libBusy=false}
 
 $('libraryFiles').addEventListener('change',e=>{processLibraryFiles(e.target.files);e.target.value=''});
