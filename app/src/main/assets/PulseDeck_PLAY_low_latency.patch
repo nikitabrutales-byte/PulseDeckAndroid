@@ -1,0 +1,12 @@
+diff --git a/app/src/main/assets/index.html b/app/src/main/assets/index.html
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@ -450,4 +450,5 @@
+-function ensureEngine(){if(!ctx||ctx.state==='closed'){ctx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'playback'});masterGain=ctx.createGain();masterGain.gain.value=+$('masterVol').value/100;const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-6;limiter.knee.value=6;limiter.ratio.value=16;limiter.attack.value=0.008;limiter.release.value=0.24;masterGain.connect(limiter);limiter.connect(ctx.destination);recordDestination=ctx.createMediaStreamDestination();limiter.connect(recordDestination);for(const d of Object.values(decks))if(d.buffer)buildNodes(d)}for(const d of Object.values(decks))if(d.buffer&&!d.nodes)buildNodes(d);return ctx.state==='running'?Promise.resolve():ctx.resume()}
++function ensureEngine(){if(!ctx||ctx.state==='closed'){ctx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});masterGain=ctx.createGain();masterGain.gain.value=+$('masterVol').value/100;const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-6;limiter.knee.value=6;limiter.ratio.value=16;limiter.attack.value=0.008;limiter.release.value=0.24;masterGain.connect(limiter);limiter.connect(ctx.destination);recordDestination=ctx.createMediaStreamDestination();limiter.connect(recordDestination);for(const d of Object.values(decks))if(d.buffer)buildNodes(d)}for(const d of Object.values(decks))if(d.buffer&&!d.nodes)buildNodes(d);return ctx.state==='running'?Promise.resolve():ctx.resume()}
+ // Warm the audio engine on the user's first real interaction, before PLAY is pressed.
+ function warmAudioEngine(){try{ensureEngine().catch(()=>{});}catch(_){}}
+-document.addEventListener('pointerdown',warmAudioEngine,{once:true,passive:true});
++// Capture every touch BEFORE the button handler; keep the audio context awake and ready.
++document.addEventListener('pointerdown',warmAudioEngine,{capture:true,passive:true});
++document.addEventListener('visibilitychange',()=>{if(!document.hidden)warmAudioEngine();});
