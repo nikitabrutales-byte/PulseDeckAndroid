@@ -1,0 +1,36 @@
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@ -450,4 +450,6 @@
+-function ensureEngine(){if(!ctx||ctx.state==='closed'){ctx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'playback'});masterGain=ctx.createGain();masterGain.gain.value=+$('masterVol').value/100;const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-6;limiter.knee.value=6;limiter.ratio.value=16;limiter.attack.value=0.008;limiter.release.value=0.24;masterGain.connect(limiter);limiter.connect(ctx.destination);recordDestination=ctx.createMediaStreamDestination();limiter.connect(recordDestination);for(const d of Object.values(decks))if(d.buffer)buildNodes(d)}for(const d of Object.values(decks))if(d.buffer&&!d.nodes)buildNodes(d);return ctx.state==='running'?Promise.resolve():ctx.resume()}
+ // Warm the audio engine on the user's first real interaction, before PLAY is pressed.
+-function warmAudioEngine(){try{ensureEngine().catch(()=>{});}catch(_){}}
+-document.addEventListener('pointerdown',warmAudioEngine,{once:true,passive:true});
++function ensureEngine(){if(!ctx||ctx.state==='closed'){ctx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});masterGain=ctx.createGain();masterGain.gain.value=+$('masterVol').value/100;const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-6;limiter.knee.value=6;limiter.ratio.value=16;limiter.attack.value=0.008;limiter.release.value=0.24;masterGain.connect(limiter);limiter.connect(ctx.destination);recordDestination=ctx.createMediaStreamDestination();limiter.connect(recordDestination);for(const d of Object.values(decks))if(d.buffer)buildNodes(d)}for(const d of Object.values(decks))if(d.buffer&&!d.nodes)buildNodes(d);return ctx.state==='running'?Promise.resolve():ctx.resume()}
++function warmAudioEngine(){try{const p=ensureEngine();if(p&&typeof p.catch==='function')p.catch(()=>{});}catch(_){}}
++// Wake the audio engine on every touch, before the PLAY click handler runs.
++document.addEventListener('pointerdown',warmAudioEngine,{capture:true,passive:true});
++document.addEventListener('visibilitychange',()=>{if(!document.hidden)warmAudioEngine();},{passive:true});
+@@ -485,1 +485,2 @@
+-function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}
++function cuePosition(d){return clamp(Number.isFinite(d.beatOffset)?d.beatOffset:0,0,Math.max(0,d.duration-.02))}
++function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;d.pos=cuePosition(d);$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}
+@@ -495,3 +498,10 @@
+  try{resumePromise=ensureEngine();if(resumePromise&&typeof resumePromise.catch==='function')resumePromise.catch(err=>{console.error('Audio engine resume',err);msg('Zvukové jádro se nepodařilo obnovit.');});}catch(err){console.error('Audio engine activation',err);msg('Zvukové jádro se nepodařilo aktivovat.');return}
++ // Never start a source against a suspended AudioContext clock.
++ if(ctx.state!=='running'){
++  if(d.pendingPlay)return;
++  d.pendingPlay=true;
++  resumePromise.then(()=>{d.pendingPlay=false;if(d.buffer&&!d.playing)playDeck(id)}).catch(err=>{d.pendingPlay=false;console.error('Audio engine resume',err);msg('Zvukové jádro se nepodařilo obnovit.')});
++  return;
++ }
+  if(!d.nodes)buildNodes(d);
+- const other=decks[id==='A'?'B':'A'];let rate=1,when=ctx.currentTime,offset=(d.duration>0&&d.pos>=d.duration-.05)?0:d.pos;
++ const other=decks[id==='A'?'B':'A'];let rate=1,when=ctx.currentTime,offset=(d.pos<=.001||d.duration>0&&d.pos>=d.duration-.05)?cuePosition(d):d.pos;
+@@ -508,1 +518,1 @@
+-function setCue(id){const d=decks[id];if(!d.buffer)return;const pos=Number.isFinite(d.beatOffset)?d.beatOffset:0;if(d.playing)stopDeck(d,true);d.pos=clamp(pos,0,Math.max(0,d.duration-.02));paintDeck(d);msg('Deck '+id+' nastaven na automaticky nalezený první úder.')}
++function setCue(id){const d=decks[id];if(!d.buffer)return;if(d.playing)stopDeck(d,true);d.pos=cuePosition(d);paintDeck(d);msg('Deck '+id+' nastaven na automaticky nalezený první úder.')}
+@@ -762,2 +772,4 @@
+ $('stopRecording').addEventListener('click',()=>{if(mediaRecorder&&mediaRecorder.state!=='inactive')mediaRecorder.stop()});
++// Prepare the audio graph at startup; unlock it on the first user gesture.
++try{ensureEngine().catch(()=>{});}catch(_){}
+ openLibraryDb().then(async()=>{if(window.PulseDeckAndroid&&window.PulseDeckAndroid.hasPersistentLibrary()){persistentLibraryReady=true;await restoreLibraryFromDevice()}else await renderLibrary()}).catch(e=>{$('libraryStatus').textContent='Místní databáze není dostupná: '+e.message});
