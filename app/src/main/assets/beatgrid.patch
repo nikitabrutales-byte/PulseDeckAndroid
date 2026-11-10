@@ -1,0 +1,78 @@
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@ -1,39 +1,47 @@
+-function makeAnalysisSamples(buffer,maxSeconds=60){
++function makeAnalysisSamples(buffer,maxSeconds=180){
++ // Analyze a long section, not just the intro. Fold all channels to mono.
+  const count=Math.min(buffer.length,Math.floor(buffer.sampleRate*maxSeconds));
+- const channels=buffer.numberOfChannels||1;
+- let bestChannel=0,bestEnergy=-1;
+- for(let c=0;c<channels;c++){
+-  const data=buffer.getChannelData(c);let energy=0;
+-  // Sparse RMS scan is sufficient to choose the cleanest/strongest channel.
+-  const stride= Math.max(1,Math.floor(count/120000));
+-  for(let i=0;i<count;i+=stride){const v=data[i];energy+=v*v}
+-  if(energy>bestEnergy){bestEnergy=energy;bestChannel=c}
++ const channels=Math.max(1,buffer.numberOfChannels||1);
++ const out=new Float32Array(count);
++ const data=Array.from({length:channels},(_,c)=>buffer.getChannelData(c));
++ const stride=Math.max(1,Math.floor(count/180000));
++ for(let i=0;i<count;i+=stride){
++  let v=0;for(let c=0;c<channels;c++)v+=data[c][i]||0;
++  out[i]=v/channels;
+  }
+- return buffer.getChannelData(bestChannel).slice(0,count);
++ // Hold the previous sampled value between analysis points.
++ if(stride>1)for(let i=1;i<count;i++)if(i%stride)out[i]=out[i-i%stride];
++ return out;
+ }
+ function detectOffset(samples,sr,bpm){
+- const {env,hop}=makeEnvelope(samples,sr),period=60/bpm,bins=240,hist=new Float64Array(bins),onsets=[];
++ const {env,hop}=makeEnvelope(samples,sr),period=60/bpm,bins=480;
++ const onsets=[];let peak=0;
+  for(let i=2;i<env.length-2;i++){
+-  const v=env[i];if(v<=0||v<env[i-1]||v<=env[i+1])continue;
+-  const t=i*hop/sr;onsets.push({t,v});
+-  const phase=((t%period)+period)%period/period;
+-  hist[Math.floor(phase*bins)%bins]+=v;
++  const v=env[i];if(v>peak)peak=v;
++  if(v<=0||v<env[i-1]||v<=env[i+1])continue;
++  onsets.push({t:i*hop/sr,v});
+  }
+- if(!onsets.length)return 0;
+- const sm=new Float64Array(bins);
+- for(let i=0;i<bins;i++)for(let d=-4;d<=4;d++)sm[i]+=hist[(i+d+bins)%bins]*(5-Math.abs(d));
+- let best=0;for(let i=1;i<bins;i++)if(sm[i]>sm[best])best=i;
+- if(!(sm[best]>0))return onsets[0].t;
+- // Grid Marker is an absolute track position. Returning t % period would
+- // incorrectly jump CUE into the intro when the file begins with silence.
+- const phaseCenter=(best+.5)/bins;
+- const tolerance=.075;
++ if(!onsets.length||peak<=0)return 0;
++ const floor=peak*.075;
++ const strong=onsets.filter(o=>o.v>=floor);
++ if(strong.length<4)return strong.length?strong[0].t:onsets[0].t;
++ const hist=new Float64Array(bins);
++ for(const o of strong){
++  const phase=((o.t%period)+period)%period/period;
++  const center=Math.round(phase*bins)%bins;
++  for(let d=-3;d<=3;d++)hist[(center+d+bins)%bins]+=o.v*(4-Math.abs(d));
++ }
++ const smooth=new Float64Array(bins);
++ for(let i=0;i<bins;i++)for(let d=-5;d<=5;d++)smooth[i]+=hist[(i+d+bins)%bins]*(6-Math.abs(d));
++ let best=0;for(let i=1;i<bins;i++)if(smooth[i]>smooth[best])best=i;
++ if(!(smooth[best]>0))return strong[0].t;
++ const phaseCenter=(best+.5)/bins,tolerance=.035;
+  let earliest=null;
+- for(const o of onsets){
++ for(const o of strong){
+   const phase=((o.t%period)+period)%period/period;
+-  const dist=Math.min(Math.abs(phase-phaseCenter),1-Math.abs(phase-phaseCenter));
++  const delta=Math.abs(phase-phaseCenter),dist=Math.min(delta,1-delta);
+   if(dist<=tolerance&&(!earliest||o.t<earliest.t))earliest=o;
+  }
+- // Keep the real first detected beat (including leading silence), not its modulo.
+- return earliest?earliest.t:onsets[0].t;
++ // Keep the absolute first-beat time, including leading silence.
++ return earliest?earliest.t:strong[0].t;
+ }
