@@ -1,0 +1,63 @@
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@ -457,7 +457,7 @@
+ const $=id=>document.getElementById(id);
+ const decks={A:createDeck('A'),B:createDeck('B')};
+ let ctx=null,masterGain=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=null,mediaRecorder=null,recordChunks=[];
+-function createDeck(id){return{id,buffer:null,peaks:null,bpm:0,beatOffset:0,duration:0,pos:0,lastCtxTime:0,rate:1,playing:false,source:null,nodes:null,loadToken:0,name:'',rms:0,analysisState:'empty',sourceToken:0}}
++function createDeck(id){return{id,buffer:null,peaks:null,bpm:0,beatOffset:0,duration:0,pos:0,lastCtxTime:0,rate:1,playing:false,source:null,nodes:null,loadToken:0,name:'',rms:0,analysisState:'empty',sourceToken:0,normRaw:1}}
+ function msg(text,kind=''){const el=$('toast');el.textContent=text;el.className='toast show '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.className='toast',3600)}
+ function fmt(seconds){seconds=Math.max(0,Math.floor(seconds||0));return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')}
+ function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+@@ -468,9 +468,34 @@
+ document.addEventListener('pointerdown',warmAudioEngine,{once:true,passive:true});
+ document.addEventListener('touchstart',warmAudioEngine,{once:true,passive:true});
+ document.addEventListener('keydown',warmAudioEngine,{once:true});
+-function buildNodes(d){if(!ctx||d.nodes)return;const low=ctx.createBiquadFilter();low.type='lowshelf';low.frequency.value=250;const mid=ctx.createBiquadFilter();mid.type='peaking';mid.frequency.value=1000;mid.Q.value=.8;const high=ctx.createBiquadFilter();high.type='highshelf';high.frequency.value=4500;const gain=ctx.createGain();const analyser=ctx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=.78;low.connect(mid);mid.connect(high);high.connect(gain);gain.connect(analyser);analyser.connect(masterGain);d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};applyDeck(d);}
+-function smoothVolumeCurve(raw){const t=clamp(Number(raw)/100,0,1);return Math.pow(t,1.22)}
+-function applyDeck(d){if(!d.nodes||!ctx)return;let allEqAtMinimum=true;for(const f of ['low','mid','high']){const control=$(`${f}${d.id}`),raw=Number(control.value),val=raw; if(raw>-59.999)allEqAtMinimum=false;d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.055);$(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB'}const g=+$(`gain${d.id}`).value,vol=smoothVolumeCurve($(`vol${d.id}`).value),eqMute=allEqAtMinimum?0:1;d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*eqMute,ctx.currentTime,.075);$(`gainVal${d.id}`).textContent=(g>0?'+':'')+g+' dB';$(`volVal${d.id}`).textContent=Math.round(vol*100)+'%';}
++function buildNodes(d){
++ if(!ctx||d.nodes)return;
++ const low=ctx.createBiquadFilter();low.type='lowshelf';low.frequency.value=250;
++ const mid=ctx.createBiquadFilter();mid.type='peaking';mid.frequency.value=1000;mid.Q.value=.8;
++ const high=ctx.createBiquadFilter();high.type='highshelf';high.frequency.value=4000;
++ const gain=ctx.createGain();
++ const analyser=ctx.createAnalyser();analyser.fftSize=1024;analyser.smoothingTimeConstant=.78;
++ low.connect(mid);mid.connect(high);high.connect(gain);gain.connect(analyser);analyser.connect(masterGain);
++ d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};
++ applyDeck(d);
++}
++function smoothVolumeCurve(raw){return clamp(Number(raw)/100,0,1)}
++function applyDeck(d){
++ if(!d.nodes||!ctx)return;
++ let allEqAtMinimum=true;
++ for(const f of ['low','mid','high']){
++  const control=$(`${f}${d.id}`),raw=Number(control.value),val=raw;
++  if(raw>-59.999)allEqAtMinimum=false;
++  d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.02);
++  $(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB';
++ }
++ const g=+$(`gain${d.id}`).value;
++ const vol=smoothVolumeCurve($(`vol${d.id}`).value);
++ const eqMute=allEqAtMinimum?0:1;
++ const normalization=d.normRaw||1;
++ d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization*eqMute,ctx.currentTime,.025);
++}
++
+ function setMasterVolume(){if(ctx&&masterGain)masterGain.gain.setTargetAtTime(+$('masterVol').value/100,ctx.currentTime,.025);$('masterVolVal').textContent=$('masterVol').value+'%'}
+ function currentPosition(d,now=ctx?ctx.currentTime:0){if(!d.playing)return d.pos;if(now<d.lastCtxTime)return d.pos;return clamp(d.pos+(now-d.lastCtxTime)*d.rate,0,d.duration||Infinity)}
+ function updatePosition(d){if(d.playing&&ctx){d.pos=currentPosition(d);d.lastCtxTime=ctx.currentTime}}
+@@ -535,7 +560,12 @@
+  return (best/bins)*period;
+ }
+ function analyzeInWorker(buffer){return new Promise(resolve=>{const fallback=()=>{try{const s=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));let bpm=refineBpm(s,buffer.sampleRate,estimateBpm(s,buffer.sampleRate));resolve({bpm,offset:detectOffset(s,buffer.sampleRate,bpm)})}catch(_){resolve({bpm:0,offset:0})}};if(!window.Worker){fallback();return}let worker,url,done=false;const finish=r=>{if(done)return;done=true;try{worker&&worker.terminate()}catch(_){}try{url&&URL.revokeObjectURL(url)}catch(_){}resolve(r||{bpm:0,offset:0})};try{const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));const code=[clamp.toString(),makeEnvelope.toString(),estimateBpm.toString(),refineBpm.toString(),detectOffset.toString(),"self.onmessage=function(e){try{const s=new Float32Array(e.data.samples),sr=e.data.sr;const rough=estimateBpm(s,sr);const bpm=refineBpm(s,sr,rough);const offset=detectOffset(s,sr,bpm);self.postMessage({bpm:bpm,offset:offset})}catch(err){self.postMessage({bpm:0,offset:0,error:String(err)})}}"].join('\n');url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));worker=new Worker(url);worker.onmessage=e=>{if(!e.data||!e.data.bpm){try{worker.terminate();URL.revokeObjectURL(url)}catch(_){}worker=null;url=null;fallback()}else finish(e.data)};worker.onerror=()=>{try{worker.terminate();URL.revokeObjectURL(url)}catch(_){}worker=null;url=null;fallback()};worker.postMessage({sr:buffer.sampleRate,samples:samples.buffer},[samples.buffer])}catch(_){fallback()}})}
+-async function loadDeck(id,file){if(!file)return;const d=decks[id],token=++d.loadToken;stopDeck(d,true);d.buffer=null;d.peaks=null;d.bpm=0;d.beatOffset=0;d.analysisState='loading';d.name=file.name;$('name'+id).textContent=file.name;$('bpm'+id).textContent='—';$('bpmTag'+id).textContent='DEKÓDUJI…';$('syncState'+id).textContent='Načítání zvuku';$('syncState'+id).classList.remove('ok');msg('Načítám '+file.name+'…');try{const bytes=await file.arrayBuffer();if(d.loadToken!==token)return;const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}if(d.loadToken!==token)return;d.buffer=buffer;d.duration=buffer.duration;d.pos=0;d.peaks=makePeaks(buffer);drawWave(d);$('length'+id).textContent=fmt(d.duration);$('bpmTag'+id).textContent='ANALÝZA BPM…';$('syncState'+id).textContent='Skladba připravena · analyzuji rytmus';d.analysisState='analyzing';if(ctx)buildNodes(d);const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));const result=await analyzeInWorker({sampleRate:buffer.sampleRate,length:samples.length,numberOfChannels:1,getChannelData:()=>samples});if(d.loadToken!==token)return;d.bpm=result.bpm;d.beatOffset=result.offset;d.analysisState='ready';$('bpm'+id).textContent=d.bpm?d.bpm.toFixed(1):'—';$('bpmTag'+id).textContent=d.bpm?'BPM · PRVNÍ ÚDER NALEZEN':'BPM NEZJIŠTĚNO';$('syncState'+id).textContent=d.bpm?'Beatgrid připraven · Auto Sync':'Analýza rytmu se nezdařila';$('syncState'+id).classList.toggle('ok',!!d.bpm);if(d.bpm&&d.playing){const other=decks[id==='A'?'B':'A'];if(other.playing&&other.bpm){masterBpm=autoMaster?other.bpm:target();$('targetBpm').value=autoMaster?masterBpm.toFixed(2):$('targetBpm').value;const when=ctx.currentTime+.008,phase=beatPhase(other,when),pos=nextAlignedPosition(d,phase,.04);stopSource(d);d.playing=false;startSource(d,when,pos,masterBpm/d.bpm);setMaster(other,false)}else{if(autoMaster){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();setRate(d,masterBpm/d.bpm);setMaster(d,false)}}msg('Analýza Deck '+id+': '+(d.bpm?d.bpm.toFixed(2)+' BPM':'tempo nebylo spolehlivě určeno')+'.');$('masterBpmBig').textContent=masterBpm.toFixed(1);$('syncSummary').textContent=d.bpm?'Beatgrid připraven · společné hodiny aktivní':'Zkus WAV nebo jinou skladbu';}catch(err){if(d.loadToken!==token)return;console.error(err);d.analysisState='error';$('bpmTag'+id).textContent='CHYBA';$('syncState'+id).textContent='Nepodařilo se dekódovat skladbu';msg('Soubor nejde dekódovat v tomto prohlížeči. Zkus MP3 nebo WAV.')}}
++async function loadDeck(id,file){if(!file)return;const d=decks[id],token=++d.loadToken;stopDeck(d,true);d.buffer=null;d.peaks=null;d.bpm=0;d.beatOffset=0;d.analysisState='loading';d.name=file.name;$('name'+id).textContent=file.name;$('bpm'+id).textContent='—';$('bpmTag'+id).textContent='DEKÓDUJI…';$('syncState'+id).textContent='Načítání zvuku';$('syncState'+id).classList.remove('ok');msg('Načítám '+file.name+'…');try{const bytes=await file.arrayBuffer();if(d.loadToken!==token)return;const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}if(d.loadToken!==token)return;d.buffer=buffer;
++const normSamples=buffer.getChannelData(0);let normSum=0,normCount=0,normStep=Math.max(1,Math.floor(normSamples.length/60000));
++for(let ni=0;ni<normSamples.length;ni+=normStep){normSum+=normSamples[ni]*normSamples[ni];normCount++}
++const normRms=Math.sqrt(normSum/Math.max(1,normCount));
++d.normRaw=normRms?Math.min(2,Math.max(.7,.16/normRms)):1;
++d.duration=buffer.duration;d.pos=0;d.peaks=makePeaks(buffer);drawWave(d);$('length'+id).textContent=fmt(d.duration);$('bpmTag'+id).textContent='ANALÝZA BPM…';$('syncState'+id).textContent='Skladba připravena · analyzuji rytmus';d.analysisState='analyzing';if(ctx)buildNodes(d);const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));const result=await analyzeInWorker({sampleRate:buffer.sampleRate,length:samples.length,numberOfChannels:1,getChannelData:()=>samples});if(d.loadToken!==token)return;d.bpm=result.bpm;d.beatOffset=result.offset;d.analysisState='ready';$('bpm'+id).textContent=d.bpm?d.bpm.toFixed(1):'—';$('bpmTag'+id).textContent=d.bpm?'BPM · PRVNÍ ÚDER NALEZEN':'BPM NEZJIŠTĚNO';$('syncState'+id).textContent=d.bpm?'Beatgrid připraven · Auto Sync':'Analýza rytmu se nezdařila';$('syncState'+id).classList.toggle('ok',!!d.bpm);if(d.bpm&&d.playing){const other=decks[id==='A'?'B':'A'];if(other.playing&&other.bpm){masterBpm=autoMaster?other.bpm:target();$('targetBpm').value=autoMaster?masterBpm.toFixed(2):$('targetBpm').value;const when=ctx.currentTime+.008,phase=beatPhase(other,when),pos=nextAlignedPosition(d,phase,.04);stopSource(d);d.playing=false;startSource(d,when,pos,masterBpm/d.bpm);setMaster(other,false)}else{if(autoMaster){masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2)}else masterBpm=target();setRate(d,masterBpm/d.bpm);setMaster(d,false)}}msg('Analýza Deck '+id+': '+(d.bpm?d.bpm.toFixed(2)+' BPM':'tempo nebylo spolehlivě určeno')+'.');$('masterBpmBig').textContent=masterBpm.toFixed(1);$('syncSummary').textContent=d.bpm?'Beatgrid připraven · společné hodiny aktivní':'Zkus WAV nebo jinou skladbu';}catch(err){if(d.loadToken!==token)return;console.error(err);d.analysisState='error';$('bpmTag'+id).textContent='CHYBA';$('syncState'+id).textContent='Nepodařilo se dekódovat skladbu';msg('Soubor nejde dekódovat v tomto prohlížeči. Zkus MP3 nebo WAV.')}}
+ 
+ // Minimal deck-local navigation: each transparent arrow seeks exactly 16 beats.
+ function beatLength(d){return 60/(d.bpm||masterBpm||138)}
