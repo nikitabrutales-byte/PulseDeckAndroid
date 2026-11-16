@@ -1,0 +1,13 @@
+diff --git a/app/src/main/assets/index.html b/app/src/main/assets/index.html
+index a06e84de0a6664c4beb802c08640ce99b1ba32dd..0000000000000000000000000000000000000000 100644
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@ -392 +392 @@
+-   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input id="highA" type="range" min="-60" max="12" step="0.5" value="0"><output id="highValA">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input id="midA" type="range" min="-60" max="12" step="0.5" value="0"><output id="midValA">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input id="lowA" type="range" min="-60" max="12" step="0.5" value="0"><output id="lowValA">0 dB</output></div></div>
++   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input id="highA" type="range" min="0" max="10" step="0.5" value="0"><output id="highValA">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input id="midA" type="range" min="0" max="10" step="0.5" value="0"><output id="midValA">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input id="lowA" type="range" min="0" max="10" step="0.5" value="0"><output id="lowValA">0 dB</output></div></div>
+@@ -400 +400 @@
+-   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input id="highB" type="range" min="-60" max="12" step="0.5" value="0"><output id="highValB">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input id="midB" type="range" min="-60" max="12" step="0.5" value="0"><output id="midValB">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input id="lowB" type="range" min="-60" max="12" step="0.5" value="0"><output id="lowValB">0 dB</output></div></div>
++   <div class="eq"><div class="control"><div class="controltitle">HIGH</div><input id="highB" type="range" min="0" max="10" step="0.5" value="0"><output id="highValB">0 dB</output></div><div class="control"><div class="controltitle">MID</div><input id="midB" type="range" min="0" max="10" step="0.5" value="0"><output id="midValB">0 dB</output></div><div class="control"><div class="controltitle">LOW</div><input id="lowB" type="range" min="0" max="10" step="0.5" value="0"><output id="lowValB">0 dB</output></div></div>
+@@ -487 +487 @@
+-  const control=$(`${f}${d.id}`),raw=Number(control.value),val=raw;
++  const control=$(`${f}${d.id}`),raw=Number(control.value),val=Math.max(0,Math.min(10,raw));
