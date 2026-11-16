@@ -485,7 +485,7 @@ function applyDeck(d){
  let allEqAtMinimum=true;
  for(const f of ['low','mid','high']){
   const control=$(`${f}${d.id}`),raw=Number(control.value),val=Math.max(0,Math.min(10,raw));
-  if(raw>-59.999)allEqAtMinimum=false;
+  if(raw>0.0001)allEqAtMinimum=false;
   d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.02);
   $(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB';
  }
