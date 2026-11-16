@@ -55,9 +55,9 @@ async function main() {
   const initial = JSON.parse(await evaluate(`JSON.stringify({lowA:!!document.getElementById('lowA'),lowB:!!document.getElementById('lowB'),playA:!!document.getElementById('playA'),playB:!!document.getElementById('playB'),diagnostics:!!window.PulseDeckDiagnostics,screenTabs:document.querySelectorAll('.screen-tab').length})`));
   assert(initial.lowA && initial.lowB, 'EQ controls for both decks did not render');
   assert(initial.playA && initial.playB, 'Both deck play controls did not render');
-  await evaluate(`document.getElementById('lowA').value='-6';document.getElementById('lowA').dispatchEvent(new Event('input',{bubbles:true}))`);
+  await evaluate(`document.getElementById('lowA').value='6';document.getElementById('lowA').dispatchEvent(new Event('input',{bubbles:true}))`);
   const eqValue = await evaluate(`Number(document.getElementById('lowA').value)`);
-  assert(eqValue === -6, `EQ input did not retain -6 dB: ${eqValue}`);
+  assert(eqValue === 6, `EQ input did not retain 6 dB: ${eqValue}`);
   console.log('PulseDeck browser smoke test PASSED');
   console.log(JSON.stringify({ initial, eqValue }, null, 2));
 }
