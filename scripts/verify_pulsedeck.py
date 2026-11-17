@@ -65,7 +65,7 @@ if not errors:
 
     if 'ACTION_OPEN_DOCUMENT' not in native:
         errors.append('Android audio file picker is not configured.')
-    if 'android:screenOrientation="fullSensor"' not in manifest.read_text(encoding='utf-8'):
+    if 'android:screenOrientation="user"' not in manifest.read_text(encoding='utf-8'):
         errors.append('Android host does not permit portrait and landscape orientations.')
 
 if errors:
