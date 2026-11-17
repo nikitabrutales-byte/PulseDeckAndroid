@@ -39,13 +39,28 @@ async function waitFor(expression, timeout, label) {
 async function main() {
   assert(fs.existsSync(htmlPath), `App HTML not found: ${htmlPath}`);
   browser = spawn(browserBin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--autoplay-policy=no-user-gesture-required', '--remote-debugging-port=0', `--user-data-dir=${path.join(temp, 'profile')}`, 'about:blank'], { stdio: 'ignore' });
-  const portFile = path.join(temp, 'profile', 'DevToolsActivePort');
-  const deadline = Date.now() + 15000;
-  while (!fs.existsSync(portFile) && Date.now() < deadline) await wait(100);
-  assert(fs.existsSync(portFile), `Chromium did not start. Set CHROME_BIN to a valid browser executable (tried ${browserBin}).`);
-  const port = Number(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0]);
-  const target = await getJson(`http://127.0.0.1:${port}/json/new?about:blank`, 'PUT');
-  ws = new WebSocket(target.webSocketDebuggerUrl);
+const portFile = path.join(temp, 'profile', 'DevToolsActivePort');
+const deadline = Date.now() + 15000;
+let port = 0;
+while (Date.now() < deadline) {
+  if (fs.existsSync(portFile)) {
+    const firstLine = fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0].trim();
+    const candidate = Number(firstLine);
+    if (Number.isInteger(candidate) && candidate > 0 && candidate <= 65535) {
+      try {
+        await getJson(`http://127.0.0.1:${candidate}/json/version`);
+        port = candidate;
+        break;
+      } catch (_) {}
+    }
+  }
+  if (browser && browser.exitCode !== null) {
+    throw new Error(`Chromium exited with code ${browser.exitCode}`);
+  }
+  await wait(100);
+}
+assert(port > 0, 'Chromium DevTools port was not ready');
+const target = await getJson(`http://127.0.0.1:${port}/json/new?about:blank`, 'PUT');ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   ws.onmessage = event => { const m = JSON.parse(event.data); if (!m.id || !pending.has(m.id)) return; const p = pending.get(m.id); pending.delete(m.id); if (m.error) p.reject(new Error(m.error.message)); else p.resolve(m.result); };
   // FIX: the previous test wrote to #lowA while the tab was still about:blank.
