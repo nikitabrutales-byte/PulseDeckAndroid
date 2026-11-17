@@ -645,14 +645,39 @@ function frame(now){
  scheduleFrame();
 }
 function switchScreen(which){
- const isDecks=which==='decks';
- $('deckScreen').hidden=!isDecks; $('mixerScreen').hidden=isDecks;
- $('showDeckScreen').classList.toggle('active',isDecks); $('showMixerScreen').classList.toggle('active',!isDecks);
- $('showDeckScreen').setAttribute('aria-pressed',String(isDecks)); $('showMixerScreen').setAttribute('aria-pressed',String(!isDecks));
- if(isDecks){for(const d of Object.values(decks))drawWave(d);}
+ const screens={
+  decks:'deckScreen',
+  mixer:'mixerScreen',
+  library:'libraryScreen',
+  recording:'recordingScreen'
+ };
+
+ for(const [key,id] of Object.entries(screens)){
+  $(id).hidden=key!==which;
+ }
+
+ const buttons={
+  decks:'showDeckScreen',
+  mixer:'showMixerScreen',
+  library:'showLibraryScreen',
+  recording:'showRecordingScreen'
+ };
+
+ for(const [key,id] of Object.entries(buttons)){
+  const active=key===which;
+  $(id).classList.toggle('active',active);
+  $(id).setAttribute('aria-pressed',String(active));
+ }
+
+ if(which==='decks'){
+  for(const d of Object.values(decks))drawWave(d);
+ }
 }
+
 $('showDeckScreen').addEventListener('click',()=>switchScreen('decks'));
 $('showMixerScreen').addEventListener('click',()=>switchScreen('mixer'));
+$('showLibraryScreen').addEventListener('click',()=>switchScreen('library'));
+$('showRecordingScreen').addEventListener('click',()=>switchScreen('recording'));
 for(const id of ['A','B']){
  const card=$('deck'+id); const eq=card.querySelector('.eq');
  if(eq)$('mixerControls'+id).appendChild(eq);
