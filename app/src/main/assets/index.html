@@ -501,16 +501,6 @@ function buildNodes(d){
  d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};
  applyDeck(d);
 }
- if(!ctx||d.nodes)return;
- const low=ctx.createBiquadFilter();low.type='lowshelf';low.frequency.value=250;
- const mid=ctx.createBiquadFilter();mid.type='peaking';mid.frequency.value=1000;mid.Q.value=.8;
- const high=ctx.createBiquadFilter();high.type='highshelf';high.frequency.value=4000;
- const gain=ctx.createGain();
- const analyser=ctx.createAnalyser();analyser.fftSize=1024;analyser.smoothingTimeConstant=.78;
- low.connect(mid);mid.connect(high);high.connect(gain);gain.connect(analyser);analyser.connect(masterGain);
- d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};
- applyDeck(d);
-}
 function smoothVolumeCurve(raw){return clamp(Number(raw)/100,0,1)}
 function applyDeck(d){
  if(!d.nodes||!ctx)return;
