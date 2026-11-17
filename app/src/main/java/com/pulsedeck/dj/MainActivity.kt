@@ -36,8 +36,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER       window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        hideSystemBars()
+        super.onCreate(savedInstanceState)
+requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
+window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+hideSystemBars()
         selectedTreeUri = getPreferences(MODE_PRIVATE).getString("library_tree_uri", null)?.let(Uri::parse)
         persistentLibraryTreeUri = getPreferences(MODE_PRIVATE).getString("persistent_library_tree_uri", null)?.let(Uri::parse)
         webView = WebView(this)
