@@ -523,7 +523,7 @@ function currentPosition(d,now=ctx?ctx.currentTime:0){if(!d.playing)return d.pos
 function updatePosition(d){if(d.playing&&ctx){d.pos=currentPosition(d);d.lastCtxTime=ctx.currentTime}}
 function stopSource(d){if(d.source){const s=d.source;d.source=null;try{s.onended=null;s.stop()}catch(_){}try{s.disconnect()}catch(_){}}}
 function syncMixerPlayButton(id){const b=$('mixerPlay'+id);if(!b)return;const playing=!!decks[id].playing;b.textContent=playing?'Ⅱ':'▶';b.classList.toggle('is-playing',playing);b.setAttribute('aria-label',(playing?'Pozastavit':'Přehrát')+' desku '+id);}
-function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted)window.PulseDeckAndroid.playbackStarted();stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);return true}function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;if(d.buffer)paintDeck(d);$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}function beatPhase(d,atCtxTime=ctx.currentTime){const p=currentPosition(d,atCtxTime);return (( ((p-d.beatOffset)*d.bpm/60)%1)+1)%1}
+function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted)window.PulseDeckAndroid.playbackStarted();stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);scheduleFrame();$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);return true}function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;if(d.buffer)paintDeck(d);$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}
 function setRate(d,rate){rate=clamp(rate,.25,3);if(d.playing&&ctx){if(ctx.currentTime>=d.lastCtxTime){updatePosition(d);d.lastCtxTime=ctx.currentTime}d.rate=rate;try{d.source.playbackRate.setTargetAtTime(rate,Math.max(ctx.currentTime,d.lastCtxTime),.025)}catch(_){d.source.playbackRate.value=rate}}else d.rate=rate;}
 function setMaster(d,automatic=false){if(!d||!d.bpm)return;masterDeck=d.id;masterBpm=target();if(automatic&&autoMaster){masterBpm=d.bpm;$('targetBpm').value=masterBpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1)}$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';$('masterSource').classList.remove('busy');}
 function updateMasterAfterTransport(){if(masterDeck&&decks[masterDeck].playing)return;const other=Object.values(decks).find(d=>d.playing&&d.bpm);if(other){setMaster(other,false)}else{masterDeck=null;$('masterSource').textContent='Automatický master čeká na přehrávání';}}
@@ -622,8 +622,28 @@ for(const id of ['A','B']){
  $('forward16'+id).addEventListener('click',()=>jumpBeats(id,1));
 }
 
-function frame(now){if(ctx){correctSync(now);if(now-lastPaint>45){lastPaint=now;for(const d of Object.values(decks))if(d.buffer)paintDeck(d)}}requestAnimationFrame(frame)}
+let frameRequest=0;
 
+function scheduleFrame(){
+ if(!frameRequest && !document.hidden && Object.values(decks).some(d=>d.playing)){
+  frameRequest=requestAnimationFrame(frame);
+ }
+}
+
+function frame(now){
+ frameRequest=0;
+ const playing=Object.values(decks).filter(d=>d.playing);
+ if(!playing.length || document.hidden)return;
+
+ if(ctx)correctSync(now);
+
+ if(now-lastPaint>=50){
+  lastPaint=now;
+  for(const d of playing)paintDeck(d);
+ }
+
+ scheduleFrame();
+}
 function switchScreen(which){
  const isDecks=which==='decks';
  $('deckScreen').hidden=!isDecks; $('mixerScreen').hidden=isDecks;
