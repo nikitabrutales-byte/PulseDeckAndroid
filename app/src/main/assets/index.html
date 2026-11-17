@@ -469,6 +469,38 @@ document.addEventListener('pointerdown',warmAudioEngine,{once:true,passive:true}
 document.addEventListener('touchstart',warmAudioEngine,{once:true,passive:true});
 document.addEventListener('keydown',warmAudioEngine,{once:true});
 function buildNodes(d){
+ if(!ctx||!masterGain)return;
+ if(d.nodes&&d.nodes.low&&d.nodes.low.context===ctx)return;
+ if(d.nodes){
+  for(const node of Object.values(d.nodes)){
+   if(node&&typeof node.disconnect==='function'){
+    try{node.disconnect()}catch(_){}
+   }
+  }
+  d.nodes=null;
+ }
+ const low=ctx.createBiquadFilter();
+ low.type='lowshelf';
+ low.frequency.value=250;
+ const mid=ctx.createBiquadFilter();
+ mid.type='peaking';
+ mid.frequency.value=1000;
+ mid.Q.value=.8;
+ const high=ctx.createBiquadFilter();
+ high.type='highshelf';
+ high.frequency.value=4000;
+ const gain=ctx.createGain();
+ const analyser=ctx.createAnalyser();
+ analyser.fftSize=1024;
+ analyser.smoothingTimeConstant=.78;
+ low.connect(mid);
+ mid.connect(high);
+ high.connect(gain);
+ gain.connect(analyser);
+ analyser.connect(masterGain);
+ d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};
+ applyDeck(d);
+}
  if(!ctx||d.nodes)return;
  const low=ctx.createBiquadFilter();low.type='lowshelf';low.frequency.value=250;
  const mid=ctx.createBiquadFilter();mid.type='peaking';mid.frequency.value=1000;mid.Q.value=.8;
