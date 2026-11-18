@@ -644,6 +644,7 @@ function frame(now){
 
  scheduleFrame();
 }
+
 function switchScreen(which){
  const screens={
   decks:'deckScreen',
@@ -651,34 +652,37 @@ function switchScreen(which){
   library:'libraryScreen',
   recording:'recordingScreen'
  };
-
- for(const [key,id] of Object.entries(screens)){
-  $(id).hidden=key!==which;
- }
-
  const buttons={
   decks:'showDeckScreen',
   mixer:'showMixerScreen',
   library:'showLibraryScreen',
   recording:'showRecordingScreen'
  };
+ if(!screens[which])return;
 
+ for(const [key,id] of Object.entries(screens)){
+  $(id).hidden=key!==which;
+ }
  for(const [key,id] of Object.entries(buttons)){
   const active=key===which;
   $(id).classList.toggle('active',active);
   $(id).setAttribute('aria-pressed',String(active));
  }
-
  if(which==='decks'){
   for(const d of Object.values(decks))drawWave(d);
  }
+ if(which==='library'){
+  renderLibrary().catch(e=>{
+   $('libraryStatus').textContent='Chyba knihovny: '+e.message;
+   console.error(e);
+  });
+ }
 }
-
 $('showDeckScreen').addEventListener('click',()=>switchScreen('decks'));
 $('showMixerScreen').addEventListener('click',()=>switchScreen('mixer'));
 $('showLibraryScreen').addEventListener('click',()=>switchScreen('library'));
 $('showRecordingScreen').addEventListener('click',()=>switchScreen('recording'));
-for(const id of ['A','B']){
+ for(const id of ['A','B']){
  const card=$('deck'+id); const eq=card.querySelector('.eq');
  if(eq)$('mixerControls'+id).appendChild(eq);
 }
