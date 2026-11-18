@@ -369,6 +369,8 @@ button:focus-visible,input:focus-visible{outline:2px solid #c66d3d!important;out
 .record-auto input,.mastervol input,input[type=range]{accent-color:#c66d3d!important}
 .dot{background:#c66d3d!important;box-shadow:0 0 12px #c66d3d77!important}
 .toast{background:#27211e!important;border-color:#81543d!important;color:#f2e8e1!important}
+/* PulseDeck: suppress all transient bottom toast popups */
+#toast,.toast{display:none!important;visibility:hidden!important;pointer-events:none!important}
 </style>
 <meta name="pulseDeck-fader-style" content="Traktor-inspired horizontal metal fader caps, top view"><!-- PulseDeck beta: Traktor-style horizontal fader caps -->
 </head>
@@ -458,7 +460,7 @@ const $=id=>document.getElementById(id);
 const decks={A:createDeck('A'),B:createDeck('B')};
 let ctx=null,masterGain=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=null,mediaRecorder=null,recordChunks=[];
 function createDeck(id){return{id,buffer:null,peaks:null,bpm:0,beatOffset:0,duration:0,pos:0,lastCtxTime:0,rate:1,playing:false,source:null,nodes:null,loadToken:0,name:'',rms:0,analysisState:'empty',sourceToken:0,normRaw:1}}
-function msg(text,kind=''){const el=$('toast');el.textContent=text;el.className='toast show '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.className='toast',3600)}
+function msg(text,kind=''){/* Toast notifications intentionally disabled: no transient pop-up messages. */return}
 function fmt(seconds){seconds=Math.max(0,Math.floor(seconds||0));return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function target(){return clamp(Number($('targetBpm').value)||138,30,220)}
