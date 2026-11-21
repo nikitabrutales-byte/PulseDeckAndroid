@@ -1,0 +1,21 @@
+*** Begin Patch
+*** Update File: app/src/main/assets/index.html
+@@
+ function applyDeck(d){
+  if(!d.nodes||!ctx)return;
+- let allEqAtMinimum=true;
+  for(const f of ['low','mid','high']){
+   const control=$(`${f}${d.id}`),raw=Number(control.value),val=Math.max(-3,Math.min(10,raw));
+-  if(raw>0.0001)allEqAtMinimum=false;
+   d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.02);
+   $(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB';
+  }
+  const g=+$(`gain${d.id}`).value;
+  const vol=smoothVolumeCurve($(`vol${d.id}`).value);
+- const eqMute=allEqAtMinimum?0:1;
+  const normalization=d.normRaw||1;
+- d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization*eqMute,ctx.currentTime,.025);
++ // EQ at 0 dB is neutral, never a mute condition. Silence is controlled only by the deck fader.
++ d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization,ctx.currentTime,.025);
+ }
+*** End Patch
