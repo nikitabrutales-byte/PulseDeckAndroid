@@ -664,7 +664,7 @@ function switchScreen(which){
  $('deckScreen').hidden=!isDecks; $('mixerScreen').hidden=isDecks;
  $('showDeckScreen').classList.toggle('active',isDecks); $('showMixerScreen').classList.toggle('active',!isDecks);
  $('showDeckScreen').setAttribute('aria-pressed',String(isDecks)); $('showMixerScreen').setAttribute('aria-pressed',String(!isDecks));
- if(isDecks){for(const d of Object.values(decks))if(!d.waveDrawn)drawWave(d);}
+ if(isDecks){for(const d of Object.values(decks)){d.waveDrawn=false;drawWave(d);}}
 }
 $('showDeckScreen').addEventListener('click',()=>switchScreen('decks'));
 $('showMixerScreen').addEventListener('click',()=>switchScreen('mixer'));
