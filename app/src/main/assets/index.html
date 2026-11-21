@@ -523,7 +523,7 @@ function currentPosition(d,now=ctx?ctx.currentTime:0){if(!d.playing)return d.pos
 function updatePosition(d){if(d.playing&&ctx){d.pos=currentPosition(d);d.lastCtxTime=ctx.currentTime}}
 function stopSource(d){if(d.source){const s=d.source;d.source=null;try{s.onended=null;s.stop()}catch(_){}try{s.disconnect()}catch(_){}}}
 function syncMixerPlayButton(id){const b=$('mixerPlay'+id);if(!b)return;const playing=!!decks[id].playing;b.textContent=playing?'Ⅱ':'▶';b.classList.toggle('is-playing',playing);b.setAttribute('aria-label',(playing?'Pozastavit':'Přehrát')+' desku '+id);}
-function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted)window.PulseDeckAndroid.playbackStarted();stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);scheduleFrame();return true}function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;paintDeck(d);$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();}
+function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted)window.PulseDeckAndroid.playbackStarted();stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)){if(frameRequest){cancelAnimationFrame(frameRequest);frameRequest=0;}if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();}updateMasterAfterTransport()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);scheduleFrame();return true}function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;paintDeck(d);$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)){if(frameRequest){cancelAnimationFrame(frameRequest);frameRequest=0;}if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();}updateMasterAfterTransport();}
 function beatPhase(d,atCtxTime=ctx.currentTime){const p=currentPosition(d,atCtxTime);return (( ((p-d.beatOffset)*d.bpm/60)%1)+1)%1}
 function setRate(d,rate){rate=clamp(rate,.25,3);if(d.playing&&ctx){if(ctx.currentTime>=d.lastCtxTime){updatePosition(d);d.lastCtxTime=ctx.currentTime}d.rate=rate;try{d.source.playbackRate.setTargetAtTime(rate,Math.max(ctx.currentTime,d.lastCtxTime),.025)}catch(_){d.source.playbackRate.value=rate}}else d.rate=rate;}
 function setMaster(d,automatic=false){if(!d||!d.bpm)return;masterDeck=d.id;masterBpm=target();if(automatic&&autoMaster){masterBpm=d.bpm;$('targetBpm').value=masterBpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1)}$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';$('masterSource').classList.remove('busy');}
@@ -625,16 +625,22 @@ for(const id of ['A','B']){
 
 // Keep visual work off the audio path: WebAudio renders on its own thread.
 // Only refresh moving decks, at a capped 15 FPS; a paused deck needs no animation.
-function frame(now){
- if(ctx){
-  const a=decks.A,b=decks.B;
-  if(a&&b&&a.playing&&b.playing&&a.bpm&&b.bpm)correctSync(now);
-  if(now-lastPaint>66){
-   lastPaint=now;
-   for(const d of Object.values(decks))if(d.buffer&&d.playing)paintDeck(d);
-  }
+let frameRequest=0;
+function scheduleFrame(){
+ if(!frameRequest&&Object.values(decks).some(d=>d.playing)){
+  frameRequest=requestAnimationFrame(frame);
  }
- requestAnimationFrame(frame);
+}
+function frame(now){
+ frameRequest=0;
+ if(!ctx)return;
+ const a=decks.A,b=decks.B;
+ if(a&&b&&a.playing&&b.playing&&a.bpm&&b.bpm)correctSync(now);
+ if(now-lastPaint>=66){
+  lastPaint=now;
+  for(const d of Object.values(decks))if(d.buffer&&d.playing)paintDeck(d);
+ }
+ scheduleFrame();
 }
 
 function switchScreen(which){
@@ -654,7 +660,7 @@ for(const id of ['A','B'])$('mixerPlay'+id).addEventListener('click',()=>playDec
 for(const id of ['A','B'])syncMixerPlayButton(id);
 
 for(const id of ['A','B']){$('load'+id).onclick=()=>{$('file'+id).value='';$('file'+id).click()};$('file'+id).onchange=e=>loadDeck(id,e.target.files[0]);$('play'+id).onclick=()=>playDeck(id).catch(e=>{console.error(e);msg('Chyba při spuštění zvuku.')});$('cue'+id).onclick=()=>setCue(id);$('stop'+id).onclick=()=>stopDeck(decks[id],true);for(const key of ['gain','vol','high','mid','low'])$(`${key}${id}`).addEventListener('input',()=>applyDeck(decks[id]));}
-$('masterVol').addEventListener('input',setMasterVolume);$('targetBpm').addEventListener('change',commitTarget);$('targetBpm').addEventListener('keydown',e=>{if(e.key==='Enter')commitTarget()});$('autoMaster').addEventListener('change',e=>{autoMaster=e.target.checked;if(autoMaster){const d=(masterDeck&&decks[masterDeck].playing&&decks[masterDeck].bpm)?decks[masterDeck]:Object.values(decks).find(x=>x.playing&&x.bpm);if(d&&d.bpm){masterDeck=d.id;masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1);$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';for(const x of Object.values(decks))if(x.playing&&x.bpm)setRate(x,masterBpm/x.bpm)}}});window.addEventListener('resize',()=>Object.values(decks).forEach(drawWave));document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ctx&&ctx.state==='suspended')ctx.resume()});drawWave(decks.A);drawWave(decks.B);requestAnimationFrame(frame);
+$('masterVol').addEventListener('input',setMasterVolume);$('targetBpm').addEventListener('change',commitTarget);$('targetBpm').addEventListener('keydown',e=>{if(e.key==='Enter')commitTarget()});$('autoMaster').addEventListener('change',e=>{autoMaster=e.target.checked;if(autoMaster){const d=(masterDeck&&decks[masterDeck].playing&&decks[masterDeck].bpm)?decks[masterDeck]:Object.values(decks).find(x=>x.playing&&x.bpm);if(d&&d.bpm){masterDeck=d.id;masterBpm=d.bpm;$('targetBpm').value=d.bpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1);$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';for(const x of Object.values(decks))if(x.playing&&x.bpm)setRate(x,masterBpm/x.bpm)}}});window.addEventListener('resize',()=>Object.values(decks).forEach(drawWave));document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ctx&&ctx.state==='suspended')ctx.resume()});drawWave(decks.A);drawWave(decks.B);
 // Export a tiny diagnostics hook for automated browser tests, not needed for normal operation.
 window.PulseDeckDiagnostics={estimateBpm,refineBpm,detectOffset,makeEnvelope,analyzeInWorker,beatPhase,correctSync,get state(){return{masterBpm,masterDeck,playing:Object.fromEntries(Object.entries(decks).map(([k,d])=>[k,d.playing])),bpm:Object.fromEntries(Object.entries(decks).map(([k,d])=>[k,d.bpm]))}}};
 
