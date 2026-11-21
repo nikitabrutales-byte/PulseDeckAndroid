@@ -575,11 +575,38 @@ function correctSync(now){
   $('syncState'+slave.id).classList.add('ok');
  }
 }
-function drawWave(d){const c=$('wave'+d.id),g=c.getContext('2d'),w=Math.max(1,c.clientWidth),h=Math.max(1,c.clientHeight),dpr=Math.min(2,devicePixelRatio||1);c.width=Math.floor(w*dpr);c.height=Math.floor(h*dpr);g.scale(dpr,dpr);g.fillStyle='#0c131c';g.fillRect(0,0,w,h);g.strokeStyle='#34302d';g.lineWidth=1;for(let x=0;x<w;x+=Math.max(24,w/24)){g.beginPath();g.moveTo(x,0);g.lineTo(x,h);g.stroke()}g.strokeStyle=d.id==='A'?'#bdb7b1':'#d8873b';g.lineWidth=1;if(d.peaks&&d.peaks.length){for(let x=0;x<w;x++){const idx=Math.floor(x/w*d.peaks.length),p=d.peaks[idx];if(!p)continue;const mid=h/2;g.beginPath();g.moveTo(x,mid+p[0]*h*.43);g.lineTo(x,mid+p[1]*h*.43);g.stroke()}}else{g.strokeStyle='#514943';g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke()}g.strokeStyle='#ffffff18';g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke()}
+function drawWave(d){
+ const c=$('wave'+d.id);
+ if(!c)return;
+ const g=c.getContext('2d');
+ const w=Math.max(1,c.clientWidth),h=Math.max(1,c.clientHeight),dpr=Math.min(2,devicePixelRatio||1);
+ const pixelW=Math.floor(w*dpr),pixelH=Math.floor(h*dpr);
+ if(c.width!==pixelW)c.width=pixelW;
+ if(c.height!==pixelH)c.height=pixelH;
+ g.setTransform(dpr,0,0,dpr,0,0);
+ g.fillStyle='#0c131c';g.fillRect(0,0,w,h);
+ g.strokeStyle='#34302d';g.lineWidth=1;g.beginPath();
+ const gridStep=Math.max(24,w/24);
+ for(let x=0;x<w;x+=gridStep){g.moveTo(x,0);g.lineTo(x,h)}
+ g.stroke();
+ const peaks=d.peaks;
+ if(peaks&&peaks.length){
+  g.strokeStyle=d.id==='A'?'#bdb7b1':'#d8873b';g.lineWidth=1;g.beginPath();
+  for(let x=0;x<w;x++){
+   const p=peaks[Math.min(peaks.length-1,Math.floor(x/w*peaks.length))];
+   if(!p)continue;
+   const mid=h/2;g.moveTo(x,mid+p[0]*h*.43);g.lineTo(x,mid+p[1]*h*.43);
+  }
+  g.stroke();
+ }else{
+  g.strokeStyle='#514943';g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke();
+ }
+ g.strokeStyle='#ffffff18';g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke();
+}
 
 function paintDeck(d){$('head'+d.id).style.left=(d.duration?currentPosition(d)/d.duration*100:0)+'%';$('elapsed'+d.id).textContent=fmt(currentPosition(d));$('length'+d.id).textContent=fmt(d.duration);if(d.nodes){const arr=d.nodes.meter;d.nodes.analyser.getByteFrequencyData(arr);let sum=0;for(let i=0;i<arr.length;i++)sum+=arr[i];const v=sum/Math.max(1,arr.length);$('syncState'+d.id).title='Audio meter '+Math.round(v)} }
 function makePeaks(buffer,bins=1500){const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=[];for(let i=0;i<bins;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out.push([lo,hi])}return out}
-function makePeaksAsync(buffer,bins=1500,shouldCancel=()=>false){return new Promise(resolve=>{const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=new Array(bins);let i=0;function chunk(){if(shouldCancel()){resolve(null);return}const stop=Math.min(bins,i+16);for(;i<stop;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out[i]=[lo,hi]}if(i<bins)setTimeout(chunk,0);else resolve(out)}chunk()})}
+function makePeaksAsync(buffer,bins=1500,shouldCancel=()=>false){return new Promise(resolve=>{const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=new Array(bins);let i=0;function chunk(){if(shouldCancel()){resolve(null);return}const stop=Math.min(bins,i+32);for(;i<stop;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out[i]=[lo,hi]}if(i<bins)setTimeout(chunk,0);else resolve(out)}chunk()})}
 function makeEnvelope(samples,sr){const hop=512,env=[];let prev=0;for(let i=0;i<samples.length;i+=hop){let sum=0,n=Math.min(hop,samples.length-i);for(let j=i;j<i+n;j++)sum+=samples[j]*samples[j];const rms=Math.sqrt(sum/Math.max(1,n));env.push(Math.max(0,rms-prev));prev=rms}let mean=env.reduce((a,b)=>a+b,0)/Math.max(1,env.length);for(let i=0;i<env.length;i++)env[i]=Math.max(0,env[i]-mean);return{env,sr,hop}}
 function estimateBpm(samples,sr){const {env,hop}=makeEnvelope(samples,sr);if(env.length<80)return 0;const min=Math.max(1,Math.floor(60/180*sr/hop)),max=Math.min(env.length-2,Math.ceil(60/70*sr/hop));const energy=new Float64Array(env.length+1);for(let i=0;i<env.length;i++)energy[i+1]=energy[i]+env[i]*env[i];let scores=[];const scoreLag=new Float64Array(max+1);for(let lag=min;lag<=max;lag++){let cross=0;for(let i=lag;i<env.length;i++)cross+=env[i]*env[i-lag];const score=cross/Math.sqrt(Math.max(1e-15,energy[env.length-lag]*(energy[env.length]-energy[lag])));scoreLag[lag]=score;scores.push({lag,bpm:60*sr/(lag*hop),score})}scores.sort((a,b)=>b.score-a.score);if(!scores.length)return 0;let best=scores[0];const dance=scores.find(x=>x.bpm>=100&&x.bpm<=160);if(dance&&dance.score>=best.score*.78)best=dance;if(best.bpm<90){const twice=scores.find(x=>x.bpm>=110&&x.bpm<=180&&Math.abs(x.bpm-best.bpm*2)<2.5);if(twice&&twice.score>=best.score*.52)best=twice}if(best.bpm>165){const half=scores.find(x=>x.bpm>=80&&x.bpm<=100&&Math.abs(x.bpm-best.bpm/2)<2.5);if(half&&half.score>=best.score*.68)best=half}const prev=scoreLag[best.lag-1]||0,center=scoreLag[best.lag]||0,next=scoreLag[best.lag+1]||0,den=prev-2*center+next;let delta=Math.abs(den)>1e-12?.5*(prev-next)/den:0;delta=clamp(delta,-.5,.5);return clamp(60*sr/((best.lag+delta)*hop),70,180)}
 function refineBpm(samples,sr,rough){const {env,hop}=makeEnvelope(samples,sr);let best=rough,bestScore=-1;for(let bpm=Math.max(70,rough-2);bpm<=Math.min(180,rough+2);bpm+=.02){const period=60/bpm,bins=96,hist=new Float64Array(bins);for(let i=0;i<env.length;i++){const v=env[i];if(v<=0)continue;const t=i*hop/sr,phase=((t%period)+period)%period;hist[Math.floor(phase/period*bins)%bins]+=v}let score=0;for(let i=0;i<bins;i++){const v=hist[i]*4+(hist[(i+95)%96]+hist[(i+1)%96])*3+(hist[(i+94)%96]+hist[(i+2)%96])*2+hist[(i+93)%96]+hist[(i+3)%96];if(v>score)score=v}if(score>bestScore){bestScore=score;best=bpm}}return Math.round(best*100)/100}
@@ -614,7 +641,7 @@ function detectOffset(samples,sr,bpm){
  return (best/bins)*period;
 }
 function analyzeInWorker(buffer){return new Promise(resolve=>{const fallback=()=>{resolve({bpm:0,offset:0})};if(!window.Worker){fallback();return}let worker,url,done=false;const finish=r=>{if(done)return;done=true;try{worker&&worker.terminate()}catch(_){}try{url&&URL.revokeObjectURL(url)}catch(_){}resolve(r||{bpm:0,offset:0})};try{const samples=buffer.getChannelData(0).slice(0,Math.min(buffer.length,buffer.sampleRate*45));const code=[clamp.toString(),makeEnvelope.toString(),estimateBpm.toString(),refineBpm.toString(),detectOffset.toString(),"self.onmessage=function(e){try{const s=new Float32Array(e.data.samples),sr=e.data.sr;const rough=estimateBpm(s,sr);const bpm=refineBpm(s,sr,rough);const offset=detectOffset(s,sr,bpm);self.postMessage({bpm:bpm,offset:offset})}catch(err){self.postMessage({bpm:0,offset:0,error:String(err)})}}"].join('\n');url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));worker=new Worker(url);worker.onmessage=e=>{if(!e.data||!e.data.bpm){try{worker.terminate();URL.revokeObjectURL(url)}catch(_){}worker=null;url=null;fallback()}else finish(e.data)};worker.onerror=()=>{try{worker.terminate();URL.revokeObjectURL(url)}catch(_){}worker=null;url=null;fallback()};worker.postMessage({sr:buffer.sampleRate,samples:samples.buffer},[samples.buffer])}catch(_){fallback()}})}
-async function loadDeck(id,file){if(!file)return;const d=decks[id],token=++d.loadToken;stopDeck(d,true);d.buffer=null;d.peaks=null;d.bpm=0;d.beatOffset=0;d.analysisState='loading';d.name=file.name;$('name'+id).textContent=file.name;$('bpm'+id).textContent='—';$('bpmTag'+id).textContent='DEKÓDUJI…';$('syncState'+id).textContent='Načítání zvuku';$('syncState'+id).classList.remove('ok');msg('Načítám '+file.name+'…');try{const bytes=await file.arrayBuffer();if(d.loadToken!==token)return;const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes.slice(0))}finally{try{await decoder.close()}catch(_){}}if(d.loadToken!==token)return;d.buffer=buffer;
+async function loadDeck(id,file){if(!file)return;const d=decks[id],token=++d.loadToken;stopDeck(d,true);d.buffer=null;d.peaks=null;d.bpm=0;d.beatOffset=0;d.analysisState='loading';d.name=file.name;$('name'+id).textContent=file.name;$('bpm'+id).textContent='—';$('bpmTag'+id).textContent='DEKÓDUJI…';$('syncState'+id).textContent='Načítání zvuku';$('syncState'+id).classList.remove('ok');msg('Načítám '+file.name+'…');try{const bytes=await file.arrayBuffer();if(d.loadToken!==token)return;const Decode=window.AudioContext||window.webkitAudioContext;const decoder=new Decode({latencyHint:'playback'});let buffer;try{buffer=await decoder.decodeAudioData(bytes)}finally{try{await decoder.close()}catch(_){}}if(d.loadToken!==token)return;d.buffer=buffer;
 const normSamples=buffer.getChannelData(0);let normSum=0,normCount=0,normStep=Math.max(1,Math.floor(normSamples.length/60000));
 for(let ni=0;ni<normSamples.length;ni+=normStep){normSum+=normSamples[ni]*normSamples[ni];normCount++}
 const normRms=Math.sqrt(normSum/Math.max(1,normCount));
