@@ -456,7 +456,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c66d3d!important;out
 'use strict';
 const $=id=>document.getElementById(id);
 const decks={A:createDeck('A'),B:createDeck('B')};
-let ctx=null,masterGain=null,masterLimiter=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=null,mediaRecorder=null,recordChunks=[],wavProcessor=null,wavSilentGain=null,wavChunks=[],wavFrameCount=0;
+let ctx=null,masterGain=null,masterLimiter=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=null,mediaRecorder=null,recordChunks=[],wavProcessor=null,wavSilentGain=null,wavWorker=null,wavWorkletUrl=null,wavWorkerUrl=null,wavRecordingReady=false;
 function createDeck(id){return{id,buffer:null,peaks:null,bpm:0,beatOffset:0,duration:0,pos:0,lastCtxTime:0,rate:1,playing:false,source:null,nodes:null,loadToken:0,name:'',rms:0,analysisState:'empty',sourceToken:0,normRaw:1}}
 function msg(text,kind=''){/* Popup notifications disabled; existing calls remain harmless. */}
 function fmt(seconds){seconds=Math.max(0,Math.floor(seconds||0));return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')}
@@ -746,51 +746,40 @@ $('masterTempoControl').addEventListener('change',syncVisibleTempo);$('masterTem
 $('tempoDown').addEventListener('click',()=>{$('masterTempoControl').value=(Math.max(30,Number($('masterTempoControl').value||138)-0.1)).toFixed(1);syncVisibleTempo()});
 $('tempoUp').addEventListener('click',()=>{$('masterTempoControl').value=(Math.min(220,Number($('masterTempoControl').value||138)+0.1)).toFixed(1);syncVisibleTempo()});
 $('autoMasterVisible').addEventListener('change',e=>{$('autoMaster').checked=e.target.checked;$('autoMaster').dispatchEvent(new Event('change'));$('masterTempoControl').value=Number($('targetBpm').value).toFixed(1)});
-function makeWavBlob(chunks,frameCount,sampleRate){
- const channels=2,bytesPerSample=2,dataBytes=frameCount*channels*bytesPerSample;
- if(dataBytes>0xFFFFFFFF-36)throw new Error('Nahrávka je příliš dlouhá pro standardní WAV.');
- const buffer=new ArrayBuffer(44+dataBytes),view=new DataView(buffer);
- const tag=(offset,value)=>{for(let i=0;i<value.length;i++)view.setUint8(offset+i,value.charCodeAt(i))};
- tag(0,'RIFF');view.setUint32(4,36+dataBytes,true);tag(8,'WAVE');tag(12,'fmt ');
- view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,channels,true);
- view.setUint32(24,sampleRate,true);view.setUint32(28,sampleRate*channels*bytesPerSample,true);
- view.setUint16(32,channels*bytesPerSample,true);view.setUint16(34,16,true);
- tag(36,'data');view.setUint32(40,dataBytes,true);
- let offset=44;
- for(const chunk of chunks){for(let i=0;i<chunk[0].length;i++){
-  const l=Math.max(-1,Math.min(1,chunk[0][i])),r=Math.max(-1,Math.min(1,chunk[1][i]));
-  view.setInt16(offset,l<0?l*32768:l*32767,true);offset+=2;
-  view.setInt16(offset,r<0?r*32768:r*32767,true);offset+=2;
- }}
- return new Blob([buffer],{type:'audio/wav'});
+function createWavWorker(){
+ const source=`let chunks=[],frames=0,sampleRate=44100;self.onmessage=e=>{const m=e.data;if(m.type==='start'){chunks=[];frames=0;sampleRate=m.sampleRate;self.postMessage({type:'ready'});return}if(m.type==='chunk'){chunks.push([new Float32Array(m.left),new Float32Array(m.right)]);frames+=m.left.byteLength/4;return}if(m.type==='finish'){try{const dataBytes=frames*4;if(dataBytes>0xFFFFFFFF-36)throw new Error('Nahrávka je příliš dlouhá pro standardní WAV.');const buffer=new ArrayBuffer(44+dataBytes),v=new DataView(buffer);const tag=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};tag(0,'RIFF');v.setUint32(4,36+dataBytes,true);tag(8,'WAVE');tag(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);v.setUint32(24,sampleRate,true);v.setUint32(28,sampleRate*4,true);v.setUint16(32,4,true);v.setUint16(34,16,true);tag(36,'data');v.setUint32(40,dataBytes,true);let o=44;for(const c of chunks){for(let i=0;i<c[0].length;i++){let l=Math.max(-1,Math.min(1,c[0][i])),r=Math.max(-1,Math.min(1,c[1][i]));v.setInt16(o,l<0?l*32768:l*32767,true);o+=2;v.setInt16(o,r<0?r*32768:r*32767,true);o+=2}}const blob=new Blob([buffer],{type:'audio/wav'});chunks=[];frames=0;self.postMessage({type:'done',blob})}catch(err){self.postMessage({type:'error',message:err.message})}}};`;
+ wavWorkerUrl=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));wavWorker=new Worker(wavWorkerUrl);
 }
 function cleanupWavCapture(){
- if(wavProcessor){wavProcessor.onaudioprocess=null;try{wavProcessor.disconnect()}catch(_){}wavProcessor=null}
+ if(wavProcessor){try{wavProcessor.port.onmessage=null;wavProcessor.disconnect()}catch(_){}wavProcessor=null}
  if(wavSilentGain){try{wavSilentGain.disconnect()}catch(_){}wavSilentGain=null}
+ wavRecordingReady=false;
 }
-async function saveWavRecording(){
- cleanupWavCapture();const chunks=wavChunks,frames=wavFrameCount;wavChunks=[];wavFrameCount=0;
- if(!frames){$('recordStatus').textContent='Nahrávka je prázdná — nebyl zachycen žádný zvuk.';$('startRecording').disabled=false;$('stopRecording').disabled=true;return}
- try{
-  const blob=makeWavBlob(chunks,frames,ctx.sampleRate);
-  const filename='PulseDeck-Mix-'+new Date().toISOString().replace(/[:.]/g,'-')+'.wav';let persistentSaved=false;
-  if(persistentLibraryReady){try{await writeBlobToDevice('Recordings/'+filename,blob);persistentSaved=true}catch(e){console.error('Uložení WAV do PulseDeck selhalo',e)}}
-  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-  $('recordState').textContent='ULOŽENO';$('recordStatus').textContent='Stereo WAV · 16 bit · '+ctx.sampleRate+' Hz · '+(blob.size/1048576).toFixed(1)+' MB. '+(persistentSaved?'Uloženo také do PulseDeck/Recordings.':'Stažení WAV do telefonu bylo spuštěno.');
- }catch(e){console.error(e);$('recordStatus').textContent='WAV se nepodařilo vytvořit nebo uložit: '+e.message}
- $('startRecording').disabled=false;$('stopRecording').disabled=true;
+function finishWavSave(blob){
+ const filename='PulseDeck-Mix-'+new Date().toISOString().replace(/[:.]/g,'-')+'.wav';
+ (async()=>{let persistentSaved=false;try{if(persistentLibraryReady){try{await writeBlobToDevice('Recordings/'+filename,blob);persistentSaved=true}catch(e){console.error('Uložení WAV do PulseDeck selhalo',e)}}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);$('recordState').textContent='ULOŽENO';$('recordStatus').textContent='Stereo WAV · 16 bit · '+ctx.sampleRate+' Hz · '+(blob.size/1048576).toFixed(1)+' MB. '+(persistentSaved?'Uloženo také do PulseDeck/Recordings.':'Stažení WAV do telefonu bylo spuštěno.')}catch(e){console.error(e);$('recordStatus').textContent='WAV se nepodařilo uložit: '+e.message}finally{$('startRecording').disabled=false;$('stopRecording').disabled=true}})();
+}
+function stopWavRecording(){
+ if(!wavRecordingReady||!wavProcessor)return;
+ $('stopRecording').disabled=true;$('recordStatus').textContent='Dokončuji WAV mimo hlavní zvukové vlákno…';
+ try{if(masterLimiter)masterLimiter.disconnect(wavProcessor);wavProcessor.port.postMessage({type:'finish'});}catch(e){console.error(e);cleanupWavCapture();$('recordStatus').textContent='Nahrávku se nepodařilo dokončit: '+e.message;$('startRecording').disabled=false;$('stopRecording').disabled=true}
 }
 $('startRecording').addEventListener('click',async()=>{
  try{
   await ensureEngine();if(!masterLimiter||!ctx||ctx.state!=='running')throw new Error('Zvukový engine není připraven.');
-  if(!ctx.createScriptProcessor)throw new Error('Tento Android WebView nepodporuje PCM nahrávání.');
-  wavChunks=[];wavFrameCount=0;wavProcessor=ctx.createScriptProcessor(4096,2,2);wavSilentGain=ctx.createGain();wavSilentGain.gain.value=0;
-  wavProcessor.onaudioprocess=e=>{if(!wavProcessor)return;const input=e.inputBuffer,n=input.length,left=new Float32Array(n),right=new Float32Array(n);left.set(input.getChannelData(0));if(input.numberOfChannels>1)right.set(input.getChannelData(1));else right.set(left);wavChunks.push([left,right]);wavFrameCount+=n;for(let c=0;c<e.outputBuffer.numberOfChannels;c++)e.outputBuffer.getChannelData(c).fill(0)};
+  if(!ctx.audioWorklet||typeof AudioWorkletNode==='undefined')throw new Error('Tento Android WebView nepodporuje AudioWorklet. Nahrávání nebylo spuštěno, aby se nezpomalil zvukový engine.');
+  if(!wavWorker)createWavWorker();
+  const workletSource=`class PulseDeckCapture extends AudioWorkletProcessor{constructor(){super();this.port.onmessage=e=>{if(e.data&&e.data.type==='finish')this.port.postMessage({finish:true})}}process(inputs,outputs){const input=inputs[0],out=outputs[0];if(input&&input.length){const l=input[0],r=input[1]||input[0];if(l&&r){const left=new Float32Array(l),right=new Float32Array(r);this.port.postMessage({left:left.buffer,right:right.buffer},[left.buffer,right.buffer])}}if(out)for(const channel of out)channel.fill(0);return true}}registerProcessor('pulsedeck-capture',PulseDeckCapture);`;
+  wavWorkletUrl=URL.createObjectURL(new Blob([workletSource],{type:'text/javascript'}));await ctx.audioWorklet.addModule(wavWorkletUrl);
+  wavProcessor=new AudioWorkletNode(ctx,'pulsedeck-capture',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit'});
+  wavSilentGain=ctx.createGain();wavSilentGain.gain.value=0;
+  wavWorker.onmessage=e=>{const m=e.data;if(m.type==='ready'){wavRecordingReady=true;$('recordState').textContent='NAHRÁVÁ SE';$('recordStatus').textContent='Nahrávání stereo WAV běží. Zpracování probíhá mimo hlavní zvukové vlákno.';$('startRecording').disabled=true;$('stopRecording').disabled=false}else if(m.type==='done'){finishWavSave(m.blob)}else if(m.type==='error'){$('recordStatus').textContent='WAV se nepodařilo vytvořit: '+m.message;$('startRecording').disabled=false;$('stopRecording').disabled=true}};
+  wavProcessor.port.onmessage=e=>{if(!wavWorker)return;if(e.data&&e.data.finish){wavWorker.postMessage({type:'finish'});cleanupWavCapture();return}if(wavRecordingReady){const {left,right}=e.data;wavWorker.postMessage({type:'chunk',left,right},[left,right])}};
   masterLimiter.connect(wavProcessor);wavProcessor.connect(wavSilentGain);wavSilentGain.connect(ctx.destination);
-  $('recordState').textContent='NAHRÁVÁ SE';$('recordStatus').textContent='Nahrávání nekomprimovaného stereo WAV běží.';$('startRecording').disabled=true;$('stopRecording').disabled=false;
- }catch(e){console.error(e);cleanupWavCapture();$('recordStatus').textContent='Nahrávání WAV nelze spustit: '+e.message}
+  wavWorker.postMessage({type:'start',sampleRate:ctx.sampleRate});$('recordStatus').textContent='Připravuji nahrávání WAV…';$('startRecording').disabled=true;$('stopRecording').disabled=true;
+ }catch(e){console.error(e);cleanupWavCapture();$('startRecording').disabled=false;$('stopRecording').disabled=true;$('recordStatus').textContent='Nahrávání WAV nelze spustit: '+e.message}
 });
-$('stopRecording').addEventListener('click',()=>{if(!wavProcessor)return;try{if(masterLimiter)masterLimiter.disconnect(wavProcessor)}catch(_){}saveWavRecording()});
+$('stopRecording').addEventListener('click',stopWavRecording);
 openLibraryDb().then(async()=>{if(window.PulseDeckAndroid&&window.PulseDeckAndroid.hasPersistentLibrary()){persistentLibraryReady=true;await restoreLibraryFromDevice()}else await renderLibrary()}).catch(e=>{$('libraryStatus').textContent='Místní databáze není dostupná: '+e.message});
 
 </script></body></html>
