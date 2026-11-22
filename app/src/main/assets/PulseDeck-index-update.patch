@@ -1,0 +1,31 @@
+diff --git a/app/src/main/assets/index.html b/app/src/main/assets/index.html
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@
+- const g=+$(`gain${d.id}`).value;
+- const vol=smoothVolumeCurve($(`vol${d.id}`).value);
+- const normalization=d.normRaw||1;
+- d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization,ctx.currentTime,.025);
++ const g=+$(`gain${d.id}`).value;
++ const fader=clamp(Number($(`vol${d.id}`).value),0,100);
++ const vol=fader===0?0:smoothVolumeCurve(fader);
++ const normalization=d.normRaw||1;
++ // Exact-zero hard mute at the final per-deck gain stage.
++ const targetGain=fader===0?0:Math.pow(10,g/20)*vol*normalization;
++ const gainParam=d.nodes.gain.gain;
++ gainParam.cancelScheduledValues(ctx.currentTime);
++ gainParam.setValueAtTime(targetGain,ctx.currentTime);
++ if(fader!==0)gainParam.setTargetAtTime(targetGain,ctx.currentTime,.025);
+@@
+-  if(isDecks){for(const d of Object.values(decks))drawWave(d);}
++  // Retain cached canvases while switching; redraw only when size or data changed.
++  if(isDecks){for(const d of Object.values(decks)){
++   const canvas=$('wave'+d.id);
++   if(canvas){
++    const dpr=Math.min(2,devicePixelRatio||1);
++    const w=Math.max(1,Math.floor(canvas.clientWidth*dpr));
++    const h=Math.max(1,Math.floor(canvas.clientHeight*dpr));
++    const key=[w,h,d.loadToken||0,d.peaks?d.peaks.length:0].join(':');
++    if(d.waveDrawKey!==key)drawWave(d);
++   }
++  }}
