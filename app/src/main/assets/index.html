@@ -458,7 +458,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c66d3d!important;out
 'use strict';
 const $=id=>document.getElementById(id);
 const decks={A:createDeck('A'),B:createDeck('B')};
-let ctx=null,masterGain=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=null,mediaRecorder=null,recordChunks=[];
+let ctx=null,masterGain=null,masterDeck=null,masterBpm=138,autoMaster=false,lastCorrection=0,lastPaint=0,toastTimer=0,recordDestination=telefon/music/PulseDeck/recordings,mediaRecorder=null,recordChunks=[];
 function createDeck(id){return{id,buffer:null,peaks:null,bpm:0,beatOffset:0,duration:0,pos:0,lastCtxTime:0,rate:1,playing:false,source:null,nodes:null,loadToken:0,name:'',rms:0,analysisState:'empty',sourceToken:0,normRaw:1}}
 function msg(text,kind=''){/* Toast notifications intentionally disabled: no transient pop-up messages. */return}
 function fmt(seconds){seconds=Math.max(0,Math.floor(seconds||0));return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')}
