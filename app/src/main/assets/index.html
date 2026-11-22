@@ -493,32 +493,25 @@ function buildNodes(d){
  high.type='highshelf';
  high.frequency.value=4000;
  const gain=ctx.createGain();
- const analyser=ctx.createAnalyser();
- analyser.fftSize=1024;
- analyser.smoothingTimeConstant=.78;
  low.connect(mid);
  mid.connect(high);
  high.connect(gain);
- gain.connect(analyser);
- analyser.connect(masterGain);
- d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};
+ gain.connect(masterGain);
+ d.nodes={low,mid,high,gain};
  applyDeck(d);
 }
 function smoothVolumeCurve(raw){return clamp(Number(raw)/100,0,1)}
 function applyDeck(d){
  if(!d.nodes||!ctx)return;
- let allEqAtMinimum=true;
  for(const f of ['low','mid','high']){
   const control=$(`${f}${d.id}`),raw=Number(control.value),val=Math.max(-3,Math.min(10,raw));
-  if(raw>0.0001)allEqAtMinimum=false;
   d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.02);
   $(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB';
  }
  const g=+$(`gain${d.id}`).value;
  const vol=smoothVolumeCurve($(`vol${d.id}`).value);
- const eqMute=allEqAtMinimum?0:1;
  const normalization=d.normRaw||1;
- d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization*eqMute,ctx.currentTime,.025);
+ d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization,ctx.currentTime,.025);
 }
 
 function setMasterVolume(){if(ctx&&masterGain)masterGain.gain.setTargetAtTime(+$('masterVol').value/100,ctx.currentTime,.025);$('masterVolVal').textContent=$('masterVol').value+'%'}
@@ -528,7 +521,7 @@ function stopSource(d){if(d.source){const s=d.source;d.source=null;try{s.onended
 function syncMixerPlayButton(id){const b=$('mixerPlay'+id);if(!b)return;const playing=!!decks[id].playing;b.textContent=playing?'Ⅱ':'▶';b.classList.toggle('is-playing',playing);b.setAttribute('aria-label',(playing?'Pozastavit':'Přehrát')+' desku '+id);}
 function startSource(d,when,offset,rate){if(!ctx||!d.buffer||!d.nodes)return false;stopSource(d);const s=ctx.createBufferSource();s.buffer=d.buffer;s.playbackRate.setValueAtTime(rate,when);s.connect(d.nodes.low);d.source=s;d.sourceToken++;const token=d.sourceToken;s.onended=()=>{if(d.sourceToken!==token)return;d.source=null;d.playing=false;d.pos=d.duration;$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();scheduleFrame()};d.pos=offset;d.lastCtxTime=when;d.rate=rate;d.playing=true;s.start(when,offset);$(`play${d.id}`).textContent='Ⅱ PAUSE';syncMixerPlayButton(d.id);scheduleFrame();/* Android foreground-service startup must never block the audio start path. */if(window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStarted)setTimeout(()=>{try{window.PulseDeckAndroid.playbackStarted()}catch(e){console.warn('Playback service start failed',e)}},0);return true}function stopDeck(d,reset=false){updatePosition(d);stopSource(d);d.playing=false;if(reset)d.pos=0;if(d.buffer)paintDeck(d);$(`play${d.id}`).textContent='▶ PLAY';syncMixerPlayButton(d.id);if(!Object.values(decks).some(x=>x.playing)&&window.PulseDeckAndroid&&window.PulseDeckAndroid.playbackStopped)window.PulseDeckAndroid.playbackStopped();updateMasterAfterTransport();if(!Object.values(decks).some(x=>x.playing)&&frameHandle){cancelAnimationFrame(frameHandle);frameHandle=0}else scheduleFrame();}
 function beatPhase(d,atCtxTime=ctx.currentTime){const p=currentPosition(d,atCtxTime);return (( ((p-d.beatOffset)*d.bpm/60)%1)+1)%1}
-function setRate(d,rate){rate=clamp(rate,.25,3);if(d.playing&&ctx){if(ctx.currentTime>=d.lastCtxTime){updatePosition(d);d.lastCtxTime=ctx.currentTime}d.rate=rate;try{d.source.playbackRate.setTargetAtTime(rate,Math.max(ctx.currentTime,d.lastCtxTime),.025)}catch(_){d.source.playbackRate.value=rate}}else d.rate=rate;}
+function setRate(d,rate,instant=false){rate=clamp(rate,.25,3);if(d.playing&&ctx&&d.source){if(ctx.currentTime>=d.lastCtxTime){updatePosition(d);d.lastCtxTime=ctx.currentTime}d.rate=rate;try{const t=Math.max(ctx.currentTime,d.lastCtxTime);if(instant)d.source.playbackRate.setValueAtTime(rate,t);else d.source.playbackRate.setTargetAtTime(rate,t,.04)}catch(_){d.source.playbackRate.value=rate}}else d.rate=rate;}
 function setMaster(d,automatic=false){if(!d||!d.bpm)return;masterDeck=d.id;masterBpm=target();if(automatic&&autoMaster){masterBpm=d.bpm;$('targetBpm').value=masterBpm.toFixed(2);$('masterBpmBig').textContent=masterBpm.toFixed(1)}$('masterSource').textContent='Master: Deck '+d.id+' · '+masterBpm.toFixed(1)+' BPM';$('masterSource').classList.remove('busy');}
 function updateMasterAfterTransport(){if(masterDeck&&decks[masterDeck].playing)return;const other=Object.values(decks).find(d=>d.playing&&d.bpm);if(other){setMaster(other,false)}else{masterDeck=null;$('masterSource').textContent='Automatický master čeká na přehrávání';}}
 function nextAlignedPosition(d,phase,lead){const bpm=d.bpm,offset=d.beatOffset,cur=currentPosition(d);let beats=(cur-offset)*bpm/60;let n=Math.ceil(beats-phase+lead*masterBpm/60);let targetBeat=n+phase;if(targetBeat<beats+.02)targetBeat+=1;let p=offset+targetBeat*60/bpm;if(p>=d.duration-.05){p=offset+Math.max(0,Math.floor((d.duration-.05-offset)*bpm/60))*60/bpm}return clamp(p,0,Math.max(0,d.duration-.02))}
@@ -547,33 +540,33 @@ async function playDeck(id){const d=decks[id];if(!d.buffer){msg('Nejdřív načt
 function setCue(id){const d=decks[id];if(!d.buffer)return;const pos=Number.isFinite(d.beatOffset)?d.beatOffset:0;if(d.playing)stopDeck(d,true);d.pos=clamp(pos,0,Math.max(0,d.duration-.02));paintDeck(d);msg('Deck '+id+' nastaven na automaticky nalezený první úder.')}
 function commitTarget(){const val=clamp(Number($('targetBpm').value)||138,30,220);$('targetBpm').value=val.toFixed(2);autoMaster=false;$('autoMaster').checked=false;autoMaster=false;masterBpm=val;$('masterBpmBig').textContent=val.toFixed(1);$('masterSource').textContent='Ruční Master Tempo · '+val.toFixed(1)+' BPM';for(const d of Object.values(decks))if(d.playing&&d.bpm)setRate(d,val/d.bpm);}
 function correctSync(now){
- if(!ctx||now-lastCorrection<40)return;
+ if(!ctx||now-lastCorrection<25)return;
  lastCorrection=now;
  const playing=Object.values(decks).filter(d=>d.playing&&d.bpm>0&&d.source);
  if(playing.length<2)return;
- let master=(masterDeck&&decks[masterDeck]&&decks[masterDeck].playing)?decks[masterDeck]:playing[0];
- let slave=playing.find(d=>d.id!==master.id);
+ const master=(masterDeck&&decks[masterDeck]&&decks[masterDeck].playing)?decks[masterDeck]:playing[0];
+ const slave=playing.find(d=>d.id!==master.id);
  if(!master||!slave||ctx.currentTime<master.lastCtxTime||ctx.currentTime<slave.lastCtxTime)return;
- const at=ctx.currentTime+.025;
- const masterPhase=beatPhase(master,at);
- const slavePhase=beatPhase(slave,at);
- // Shortest signed phase distance, in beats (-0.5..+0.5).
- const err=((masterPhase-slavePhase+1.5)%1)-.5;
  const base=masterBpm/slave.bpm;
  if(!Number.isFinite(base)||base<.25||base>3)return;
- // Continuously trim the slave toward the master grid. A small deadband
- // avoids needless pitch movement once the decks are tightly locked.
- const phaseTrim=Math.abs(err)<.003?0:clamp(err*.28,-.025,.025);
- const desired=clamp(base*(1+phaseTrim),.25,3);
- if(Math.abs(desired-slave.rate)>.00015)setRate(slave,desired);
- if(Math.abs(err)>.035){
-  $('syncState'+slave.id).textContent='FÁZE SE DOROVNÁVÁ';
-  $('syncState'+slave.id).classList.add('busy');
-  $('syncState'+slave.id).classList.remove('ok');
+ const at=ctx.currentTime+.04;
+ const mp=beatPhase(master,at),sp=beatPhase(slave,at);
+ let err=mp-sp;if(err>.5)err-=1;else if(err<-.5)err+=1;
+ // Tempo lock is the base ratio; phase correction is a bounded, slow slew.
+ // Never jump the audio buffer during normal correction.
+ const deadband=.004;
+ const proportional=Math.abs(err)<=deadband?0:err*.12;
+ const integralLimit=.0008;
+ slave.syncIntegral=clamp((slave.syncIntegral||0)+err*.000015,-integralLimit,integralLimit);
+ const correction=clamp(proportional+slave.syncIntegral,-.012,.012);
+ const desired=clamp(base*(1+correction),.25,3);
+ if(Math.abs(desired-slave.rate)>.000025)setRate(slave,desired);
+ if(Math.abs(err)>.025){
+  $('syncState'+slave.id).textContent='BEATSYNC · FÁZOVÁ KOREKCE';
+  $('syncState'+slave.id).classList.add('busy');$('syncState'+slave.id).classList.remove('ok');
  }else{
   $('syncState'+slave.id).textContent='BEATSYNC · ZAMČENO';
-  $('syncState'+slave.id).classList.remove('busy');
-  $('syncState'+slave.id).classList.add('ok');
+  $('syncState'+slave.id).classList.remove('busy');$('syncState'+slave.id).classList.add('ok');
  }
 }
 function drawWave(d){
@@ -608,9 +601,9 @@ function drawWave(d){
  d.waveDrawKey=drawKey;
 }
 
-function paintDeck(d){$('head'+d.id).style.left=(d.duration?currentPosition(d)/d.duration*100:0)+'%';$('elapsed'+d.id).textContent=fmt(currentPosition(d));$('length'+d.id).textContent=fmt(d.duration);if(d.nodes){const arr=d.nodes.meter;d.nodes.analyser.getByteFrequencyData(arr);let sum=0;for(let i=0;i<arr.length;i++)sum+=arr[i];const v=sum/Math.max(1,arr.length);$('syncState'+d.id).title='Audio meter '+Math.round(v)} }
+function paintDeck(d){const pos=currentPosition(d);$('head'+d.id).style.left=(d.duration?pos/d.duration*100:0)+'%';$('elapsed'+d.id).textContent=fmt(pos);$('length'+d.id).textContent=fmt(d.duration)}
 function makePeaks(buffer,bins=1500){const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=[];for(let i=0;i<bins;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out.push([lo,hi])}return out}
-function makePeaksAsync(buffer,bins=1500,shouldCancel=()=>false){return new Promise(resolve=>{const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=new Array(bins);let i=0;function chunk(){if(shouldCancel()){resolve(null);return}const stop=Math.min(bins,i+8);for(;i<stop;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out[i]=[lo,hi]}if(i<bins)setTimeout(chunk,0);else resolve(out)}chunk()})}
+function makePeaksAsync(buffer,bins=1500,shouldCancel=()=>false){return new Promise(resolve=>{const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=new Array(bins);let i=0;function chunk(){if(shouldCancel()){resolve(null);return}const stop=Math.min(bins,i+32);for(;i<stop;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out[i]=[lo,hi]}if(i<bins)setTimeout(chunk,0);else resolve(out)}chunk()})}
 function makeEnvelope(samples,sr){const hop=512,env=[];let prev=0;for(let i=0;i<samples.length;i+=hop){let sum=0,n=Math.min(hop,samples.length-i);for(let j=i;j<i+n;j++)sum+=samples[j]*samples[j];const rms=Math.sqrt(sum/Math.max(1,n));env.push(Math.max(0,rms-prev));prev=rms}let mean=env.reduce((a,b)=>a+b,0)/Math.max(1,env.length);for(let i=0;i<env.length;i++)env[i]=Math.max(0,env[i]-mean);return{env,sr,hop}}
 function estimateBpm(samples,sr){const {env,hop}=makeEnvelope(samples,sr);if(env.length<80)return 0;const min=Math.max(1,Math.floor(60/180*sr/hop)),max=Math.min(env.length-2,Math.ceil(60/70*sr/hop));const energy=new Float64Array(env.length+1);for(let i=0;i<env.length;i++)energy[i+1]=energy[i]+env[i]*env[i];let scores=[];const scoreLag=new Float64Array(max+1);for(let lag=min;lag<=max;lag++){let cross=0;for(let i=lag;i<env.length;i++)cross+=env[i]*env[i-lag];const score=cross/Math.sqrt(Math.max(1e-15,energy[env.length-lag]*(energy[env.length]-energy[lag])));scoreLag[lag]=score;scores.push({lag,bpm:60*sr/(lag*hop),score})}scores.sort((a,b)=>b.score-a.score);if(!scores.length)return 0;let best=scores[0];const dance=scores.find(x=>x.bpm>=100&&x.bpm<=160);if(dance&&dance.score>=best.score*.78)best=dance;if(best.bpm<90){const twice=scores.find(x=>x.bpm>=110&&x.bpm<=180&&Math.abs(x.bpm-best.bpm*2)<2.5);if(twice&&twice.score>=best.score*.52)best=twice}if(best.bpm>165){const half=scores.find(x=>x.bpm>=80&&x.bpm<=100&&Math.abs(x.bpm-best.bpm/2)<2.5);if(half&&half.score>=best.score*.68)best=half}const prev=scoreLag[best.lag-1]||0,center=scoreLag[best.lag]||0,next=scoreLag[best.lag+1]||0,den=prev-2*center+next;let delta=Math.abs(den)>1e-12?.5*(prev-next)/den:0;delta=clamp(delta,-.5,.5);return clamp(60*sr/((best.lag+delta)*hop),70,180)}
 function refineBpm(samples,sr,rough){const {env,hop}=makeEnvelope(samples,sr);let best=rough,bestScore=-1;for(let bpm=Math.max(70,rough-2);bpm<=Math.min(180,rough+2);bpm+=.02){const period=60/bpm,bins=96,hist=new Float64Array(bins);for(let i=0;i<env.length;i++){const v=env[i];if(v<=0)continue;const t=i*hop/sr,phase=((t%period)+period)%period;hist[Math.floor(phase/period*bins)%bins]+=v}let score=0;for(let i=0;i<bins;i++){const v=hist[i]*4+(hist[(i+95)%96]+hist[(i+1)%96])*3+(hist[(i+94)%96]+hist[(i+2)%96])*2+hist[(i+93)%96]+hist[(i+3)%96];if(v>score)score=v}if(score>bestScore){bestScore=score;best=bpm}}return Math.round(best*100)/100}
