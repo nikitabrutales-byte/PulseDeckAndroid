@@ -1,0 +1,20 @@
+diff --git a/app/src/main/assets/index.html b/app/src/main/assets/index.html
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@ -511,4 +511,9 @@
+- const g=+$(`gain${d.id}`).value;
+- const vol=smoothVolumeCurve($(`vol${d.id}`).value);
+- const normalization=d.normRaw||1;
+- d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization,ctx.currentTime,.025);
++ const g=+$(`gain${d.id}`).value;
++ const fader=clamp(Number($(`vol${d.id}`).value),0,100);
++ const vol=fader===0?0:smoothVolumeCurve(fader);
++ const normalization=d.normRaw||1;
++ const gainParam=d.nodes.gain.gain;
++ const targetGain=fader===0?0:Math.pow(10,g/20)*vol*normalization;
++ gainParam.cancelScheduledValues(ctx.currentTime);
++ if(fader===0)gainParam.setValueAtTime(0,ctx.currentTime);
++ else gainParam.setTargetAtTime(targetGain,ctx.currentTime,.025);
+@@ -528,1 +533,1 @@
+-if(!ctx||ctx.state!=='running')await ensureEngine();if(!d.nodes)buildNodes(d);
++if(!ctx||ctx.state!=='running'){const resume=ensureEngine();resume.catch(e=>console.warn('AudioContext resume failed',e));}if(!d.nodes)buildNodes(d);
