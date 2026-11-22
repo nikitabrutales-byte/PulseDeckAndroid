@@ -1,0 +1,37 @@
+diff --git a/app/src/main/assets/index.html b/app/src/main/assets/index.html
+--- a/app/src/main/assets/index.html
++++ b/app/src/main/assets/index.html
+@@
+- const analyser=ctx.createAnalyser();
+- analyser.fftSize=1024;
+- analyser.smoothingTimeConstant=.78;
+  low.connect(mid);
+  mid.connect(high);
+  high.connect(gain);
+- gain.connect(analyser);
+- analyser.connect(masterGain);
+- d.nodes={low,mid,high,gain,analyser,meter:new Uint8Array(analyser.frequencyBinCount)};
++ // Keep the playback graph lean: the analyser was only feeding an invisible tooltip meter.
++ gain.connect(masterGain);
++ d.nodes={low,mid,high,gain};
+@@
+- let allEqAtMinimum=true;
+  for(const f of ['low','mid','high']){
+   const control=$(`${f}${d.id}`),raw=Number(control.value),val=Math.max(-3,Math.min(10,raw));
+-  if(raw>0.0001)allEqAtMinimum=false;
+   d.nodes[f].gain.setTargetAtTime(val,ctx.currentTime,.02);
+   $(`${f}Val${d.id}`).textContent=(val>0?'+':'')+val.toFixed(1)+' dB';
+  }
+  const g=+$(`gain${d.id}`).value;
+  const vol=smoothVolumeCurve($(`vol${d.id}`).value);
+- const eqMute=allEqAtMinimum?0:1;
+  const normalization=d.normRaw||1;
+- d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization*eqMute,ctx.currentTime,.025);
++ // 0 dB EQ is neutral. Only the channel fader may mute the deck.
++ d.nodes.gain.gain.setTargetAtTime(Math.pow(10,g/20)*vol*normalization,ctx.currentTime,.025);
+@@
+-function paintDeck(d){$('head'+d.id).style.left=(d.duration?currentPosition(d)/d.duration*100:0)+'%';$('elapsed'+d.id).textContent=fmt(currentPosition(d));$('length'+d.id).textContent=fmt(d.duration);if(d.nodes){const arr=d.nodes.meter;d.nodes.analyser.getByteFrequencyData(arr);let sum=0;for(let i=0;i<arr.length;i++)sum+=arr[i];const v=sum/Math.max(1,arr.length);$('syncState'+d.id).title='Audio meter '+Math.round(v)} }
++function paintDeck(d){$('head'+d.id).style.left=(d.duration?currentPosition(d)/d.duration*100:0)+'%';$('elapsed'+d.id).textContent=fmt(currentPosition(d));$('length'+d.id).textContent=fmt(d.duration)}
+@@
+-function makePeaksAsync(buffer,bins=1500,shouldCancel=()=>false){return new Promise(resolve=>{const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=new Array(bins);let i=0;function chunk(){if(shouldCancel()){resolve(null);return}const stop=Math.min(bins,i+8);for(;i<stop;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out[i]=[lo,hi]}if(i<bins)setTimeout(chunk,0);else resolve(out)}chunk()})}
++function makePeaksAsync(buffer,bins=1500,shouldCancel=()=>false){return new Promise(resolve=>{const data=buffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/bins)),out=new Array(bins);let i=0;function chunk(){if(shouldCancel()){resolve(null);return}const stop=Math.min(bins,i+32);for(;i<stop;i++){let lo=1,hi=-1;const end=Math.min(data.length,(i+1)*step);for(let j=i*step;j<end;j+=2){const v=data[j];if(v<lo)lo=v;if(v>hi)hi=v}out[i]=[lo,hi]}if(i<bins)setTimeout(chunk,0);else resolve(out)}chunk()})}
